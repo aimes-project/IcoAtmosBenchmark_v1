@@ -1,0 +1,567 @@
+\section{\src{dyn_horiz_adv_limiter}}
+\label{dyn_horiz_adv_limiter}
+
+\subsection{Description}
+
+Kernel \src{dyn_horiz_adv_limiter} is taken from the original subroutine
+\src{horizontal_limiter_thuburn} in \NICAM.
+%
+This subroutine is originally defined in \src{mod_src_tracer}, that
+is to contain several subroutines for tracer advection.
+%
+Subroutine \src{horizontal_limiter_thuburn} is to ensure distribution of
+tracer quantities' monotonicity in advection scheme, using the flux
+limitter proposed by \cite{Thuburn:1996in}.
+%
+This subroutine is for horizontal advection only and vertical advection
+is treated by other subroutine \src{vertical_limiter_thuburn}, which is
+also kernelized in this package (See \autoref{dyn_vert_adv_limiter}).
+%
+In NICAM, a third order upwind scheme proposed by \cite{Miura:2007bs} is used
+for the horizontal tracer advection on the icosahedral grid.
+See section 4. in \cite{Tomita2010ecmwf} for details of the tracer scheme in \NICAM, too.
+
+
+
+\subsection{Discretization and code}
+
+Argument lists and local variables definition part of this subroutine is
+as follows.
+
+\begin{LstF90}[name=horizontal_limiter_thuburn]
+subroutine horizontal_limiter_thuburn( &
+     q_a,    q_a_pl,  &
+     q,      q_pl,    &
+     d,      d_pl,    &
+     ch,     ch_pl,   &
+     cmask,  cmask_pl, &
+     Qout_prev, Qout_prev_pl, & ! KERNEL
+     Qout_post, Qout_post_pl  ) ! KERNEL
+!ESC!    use mod_const, only: &
+!ESC!       CONST_HUGE, &
+!ESC!       CONST_EPS
+!ESC!    use mod_adm, only: &
+!ESC!       ADM_have_pl,    &
+!ESC!       ADM_have_sgp,   &
+!ESC!       ADM_lall,       &
+!ESC!       ADM_lall_pl,    &
+!ESC!       ADM_gall,       &
+!ESC!       ADM_gall_pl,    &
+!ESC!       ADM_kall,       &
+!ESC!       ADM_gall_1d,    &
+!ESC!       ADM_gmin,       &
+!ESC!       ADM_gmax,       &
+!ESC!       ADM_gslf_pl,    &
+!ESC!       ADM_gmin_pl,    &
+!ESC!       ADM_gmax_pl
+!ESC!    use mod_comm, only: &
+!ESC!       COMM_data_transfer
+!ESC!    implicit none
+
+  real(RP), intent(inout) :: q_a     (ADM_gall   ,ADM_kall,ADM_lall   ,6)
+  real(RP), intent(inout) :: q_a_pl  (ADM_gall_pl,ADM_kall,ADM_lall_pl  )
+  real(RP), intent(in)    :: q       (ADM_gall   ,ADM_kall,ADM_lall     )
+  real(RP), intent(in)    :: q_pl    (ADM_gall_pl,ADM_kall,ADM_lall_pl  )
+  real(RP), intent(in)    :: d       (ADM_gall   ,ADM_kall,ADM_lall     )
+  real(RP), intent(in)    :: d_pl    (ADM_gall_pl,ADM_kall,ADM_lall_pl  )
+  real(RP), intent(in)    :: ch      (ADM_gall   ,ADM_kall,ADM_lall   ,6)
+  real(RP), intent(in)    :: ch_pl   (ADM_gall_pl,ADM_kall,ADM_lall_pl  )
+  real(RP), intent(in)    :: cmask   (ADM_gall   ,ADM_kall,ADM_lall   ,6)
+  real(RP), intent(in)    :: cmask_pl(ADM_gall_pl,ADM_kall,ADM_lall_pl  )
+  real(RP), intent(out)   :: Qout_prev   (ADM_gall   ,ADM_kall,ADM_lall   ,2 ) ! before communication (for check)
+  real(RP), intent(out)   :: Qout_prev_pl(ADM_gall_pl,ADM_kall,ADM_lall_pl,2 ) !
+  real(RP), intent(in)    :: Qout_post   (ADM_gall   ,ADM_kall,ADM_lall   ,2 ) ! after communication (additional input)
+  real(RP), intent(in)    :: Qout_post_pl(ADM_gall_pl,ADM_kall,ADM_lall_pl,2 ) !
+
+  real(RP) :: q_min_AI, q_min_AIJ, q_min_AJ, q_min_pl
+  real(RP) :: q_max_AI, q_max_AIJ, q_max_AJ, q_max_pl
+
+  real(RP) :: qnext_min   , qnext_min_pl
+  real(RP) :: qnext_max   , qnext_max_pl
+  real(RP) :: Cin_sum     , Cin_sum_pl
+  real(RP) :: Cout_sum    , Cout_sum_pl
+  real(RP) :: CQin_max_sum, CQin_max_sum_pl
+  real(RP) :: CQin_min_sum, CQin_min_sum_pl
+
+  integer, parameter :: I_min = 1
+  integer, parameter :: I_max = 2
+  real(RP) :: Qin    (ADM_gall   ,ADM_kall,ADM_lall   ,2,6)
+  real(RP) :: Qin_pl (ADM_gall_pl,ADM_kall,ADM_lall_pl,2,2)
+  real(RP) :: Qout   (ADM_gall   ,ADM_kall,ADM_lall   ,2  )
+  real(RP) :: Qout_pl(ADM_gall_pl,ADM_kall,ADM_lall_pl,2  )
+
+  real(RP) :: ch_masked1
+  real(RP) :: ch_masked2
+  real(RP) :: ch_masked3
+  real(RP) :: ch_masked4
+  real(RP) :: ch_masked5
+  real(RP) :: ch_masked6
+  real(RP) :: ch_masked
+  real(RP) :: zerosw
+
+  integer  :: gmin, gmax, kall, iall
+  real(RP) :: EPS, BIG
+
+  integer  :: ij
+  integer  :: ip1j, ijp1, ip1jp1, ip2jp1
+  integer  :: im1j, ijm1
+
+  integer  :: i, j, k, l, n, v
+  !---------------------------------------------------------------------------
+
+\end{LstF90}
+%
+\src{q_a} is $q$ at the edge of hexagonal control cell, which modified by the flux limiter.
+%
+Note that \src{q_a} has 4-th dimension and its size is 6, that specifies
+6 edges of hexagon control volume.
+%
+\src{q} is $q$ at grid point,
+%
+\src{d} is a correction factor derived from an artificial viscosity for the total density.
+%
+\src{ch} is Courant number, \src{cmask} is upwind direction mask.
+%
+In original subroutine in NICAM, \src{Qout_prev} and \src{Qout_post} are not exist.
+These additional arguments is prepared to avoid halo communication, which appeared in the middle of this scheme.
+The detail is discussed below.
+
+The first section of the subroutine is as follows.
+
+\begin{LstF90}[name=horizontal_limiter_thuburn,firstnumber=last]
+  call DEBUG_rapstart('____horizontal_adv_limiter')
+
+  gmin = ADM_gmin
+  gmax = ADM_gmax
+  kall = ADM_kall
+  iall = ADM_gall_1d
+
+  EPS  = CONST_EPS
+  BIG  = CONST_HUGE
+
+  do l = 1, ADM_lall
+     !$omp parallel default(none), &
+     !$omp private(i,j,k,ij,ip1j,ip1jp1,ijp1,im1j,ijm1,ip2jp1,                        &
+     !$omp         q_min_AI,q_min_AIJ,q_min_AJ,q_max_AI,q_max_AIJ,q_max_AJ,zerosw,    &
+     !$omp         ch_masked1,ch_masked2,ch_masked3,ch_masked4,ch_masked5,ch_masked6, &
+     !$omp         qnext_min,qnext_max,Cin_sum,Cout_sum,CQin_min_sum,CQin_max_sum),   &
+     !$omp shared(l,ADM_have_sgp,gmin,gmax,kall,iall,q,cmask,d,ch,Qin,Qout,EPS,BIG)
+     do k = 1, kall
+        !---< (i) define inflow bounds, eq.(32)&(33) >---
+!OCL XFILL
+        !$omp do
+        do j = gmin-1, gmax
+        do i = gmin-1, gmax
+           ij     = (j-1)*iall + i
+           ip1j   = ij + 1
+           ip1jp1 = ij + iall + 1
+           ijp1   = ij + iall
+           im1j   = ij - 1
+           ijm1   = ij - iall
+
+           im1j   = max( im1j  , 1 )
+           ijm1   = max( ijm1  , 1 )
+
+           q_min_AI  = min( q(ij,k,l), q(ijm1,k,l), q(ip1j,k,l), q(ip1jp1,k,l) )
+           q_max_AI  = max( q(ij,k,l), q(ijm1,k,l), q(ip1j,k,l), q(ip1jp1,k,l) )
+           q_min_AIJ = min( q(ij,k,l), q(ip1j,k,l), q(ip1jp1,k,l), q(ijp1,k,l) )
+           q_max_AIJ = max( q(ij,k,l), q(ip1j,k,l), q(ip1jp1,k,l), q(ijp1,k,l) )
+           q_min_AJ  = min( q(ij,k,l), q(ip1jp1,k,l), q(ijp1,k,l), q(im1j,k,l) )
+           q_max_AJ  = max( q(ij,k,l), q(ip1jp1,k,l), q(ijp1,k,l), q(im1j,k,l) )
+
+           Qin(ij,    k,l,I_min,1) = (        cmask(ij,k,l,1) ) * q_min_AI &
+                                   + ( 1.0_RP-cmask(ij,k,l,1) ) * BIG
+           Qin(ip1j,  k,l,I_min,4) = (        cmask(ij,k,l,1) ) * BIG      &
+                                   + ( 1.0_RP-cmask(ij,k,l,1) ) * q_min_AI
+           Qin(ij,    k,l,I_max,1) = (        cmask(ij,k,l,1) ) * q_max_AI &
+                                   + ( 1.0_RP-cmask(ij,k,l,1) ) * (-BIG)
+           Qin(ip1j,  k,l,I_max,4) = (        cmask(ij,k,l,1) ) * (-BIG)   &
+                                   + ( 1.0_RP-cmask(ij,k,l,1) ) * q_max_AI
+
+           Qin(ij,    k,l,I_min,2) = (        cmask(ij,k,l,2) ) * q_min_AIJ &
+                                   + ( 1.0_RP-cmask(ij,k,l,2) ) * BIG
+           Qin(ip1jp1,k,l,I_min,5) = (        cmask(ij,k,l,2) ) * BIG       &
+                                   + ( 1.0_RP-cmask(ij,k,l,2) ) * q_min_AIJ
+           Qin(ij,    k,l,I_max,2) = (        cmask(ij,k,l,2) ) * q_max_AIJ &
+                                   + ( 1.0_RP-cmask(ij,k,l,2) ) * (-BIG)
+           Qin(ip1jp1,k,l,I_max,5) = (        cmask(ij,k,l,2) ) * (-BIG)    &
+                                   + ( 1.0_RP-cmask(ij,k,l,2) ) * q_max_AIJ
+
+           Qin(ij,    k,l,I_min,3) = (        cmask(ij,k,l,3) ) * q_min_AJ &
+                                   + ( 1.0_RP-cmask(ij,k,l,3) ) * BIG
+           Qin(ijp1,  k,l,I_min,6) = (        cmask(ij,k,l,3) ) * BIG      &
+                                   + ( 1.0_RP-cmask(ij,k,l,3) ) * q_min_AJ
+           Qin(ij,    k,l,I_max,3) = (        cmask(ij,k,l,3) ) * q_max_AJ &
+                                   + ( 1.0_RP-cmask(ij,k,l,3) ) * (-BIG)
+           Qin(ijp1,  k,l,I_max,6) = (        cmask(ij,k,l,3) ) * (-BIG)   &
+                                   + ( 1.0_RP-cmask(ij,k,l,3) ) * q_max_AJ
+        enddo
+        enddo
+        !$omp end do
+
+        if ( ADM_have_sgp(l) ) then
+           !$omp master
+           j = gmin-1
+           i = gmin-1
+
+           ij     = (j-1)*iall + i
+           ijp1   = ij + iall
+           ip1jp1 = ij + iall + 1
+           ip2jp1 = ij + iall + 2
+
+           q_min_AIJ = min( q(ij,k,l), q(ip1jp1,k,l), q(ip2jp1,k,l), q(ijp1,k,l) )
+           q_max_AIJ = max( q(ij,k,l), q(ip1jp1,k,l), q(ip2jp1,k,l), q(ijp1,k,l) )
+
+           Qin(ij,    k,l,I_min,2) = (        cmask(ij,k,l,2) ) * q_min_AIJ &
+                                   + ( 1.0_RP-cmask(ij,k,l,2) ) * BIG
+           Qin(ip1jp1,k,l,I_min,5) = (        cmask(ij,k,l,2) ) * BIG       &
+                                   + ( 1.0_RP-cmask(ij,k,l,2) ) * q_min_AIJ
+           Qin(ij,    k,l,I_max,2) = (        cmask(ij,k,l,2) ) * q_max_AIJ &
+                                   + ( 1.0_RP-cmask(ij,k,l,2) ) * (-BIG)
+           Qin(ip1jp1,k,l,I_max,5) = (        cmask(ij,k,l,2) ) * (-BIG)    &
+                                   + ( 1.0_RP-cmask(ij,k,l,2) ) * q_max_AIJ
+           !$omp end master
+        endif
+
+\end{LstF90}
+
+The first section above and second section below are in long $l$- and $k$- double loop.
+In that there are 2 main $i,j$-double loops and one \src{IF} clause and a
+small $i,j$-loop.
+%
+The $i,j$-loop(l.102) calculates the inflow bounds.
+First, minimum and maximum of $q$ at arc points (specified by \src{AI},
+\src{AIJ} and \src{AJ}) are set, then actual bound of inflow \src{Qin} is
+calcurated.
+%
+\src{IF} clause at l.151 is a treatment for the singular points.
+
+Second section is as follows.
+
+\begin{LstF90}[name=horizontal_limiter_thuburn,firstnumber=last]
+        !---< (iii) define allowable range of q at next step, eq.(42)&(43) >---
+!OCL XFILL
+        !$omp do
+        do j = gmin, gmax
+        do i = gmin, gmax
+           ij = (j-1)*iall + i
+
+           qnext_min = min( q(ij,k,l),           &
+                            Qin(ij,k,l,I_min,1), &
+                            Qin(ij,k,l,I_min,2), &
+                            Qin(ij,k,l,I_min,3), &
+                            Qin(ij,k,l,I_min,4), &
+                            Qin(ij,k,l,I_min,5), &
+                            Qin(ij,k,l,I_min,6)  )
+
+           qnext_max = max( q(ij,k,l),           &
+                            Qin(ij,k,l,I_max,1), &
+                            Qin(ij,k,l,I_max,2), &
+                            Qin(ij,k,l,I_max,3), &
+                            Qin(ij,k,l,I_max,4), &
+                            Qin(ij,k,l,I_max,5), &
+                            Qin(ij,k,l,I_max,6)  )
+
+           ch_masked1 = min( ch(ij,k,l,1), 0.0_RP )
+           ch_masked2 = min( ch(ij,k,l,2), 0.0_RP )
+           ch_masked3 = min( ch(ij,k,l,3), 0.0_RP )
+           ch_masked4 = min( ch(ij,k,l,4), 0.0_RP )
+           ch_masked5 = min( ch(ij,k,l,5), 0.0_RP )
+           ch_masked6 = min( ch(ij,k,l,6), 0.0_RP )
+
+           Cin_sum      = ch_masked1 &
+                        + ch_masked2 &
+                        + ch_masked3 &
+                        + ch_masked4 &
+                        + ch_masked5 &
+                        + ch_masked6
+
+           Cout_sum     = ch(ij,k,l,1) - ch_masked1 &
+                        + ch(ij,k,l,2) - ch_masked2 &
+                        + ch(ij,k,l,3) - ch_masked3 &
+                        + ch(ij,k,l,4) - ch_masked4 &
+                        + ch(ij,k,l,5) - ch_masked5 &
+                        + ch(ij,k,l,6) - ch_masked6
+
+           CQin_min_sum = ch_masked1 * Qin(ij,k,l,I_min,1) &
+                        + ch_masked2 * Qin(ij,k,l,I_min,2) &
+                        + ch_masked3 * Qin(ij,k,l,I_min,3) &
+                        + ch_masked4 * Qin(ij,k,l,I_min,4) &
+                        + ch_masked5 * Qin(ij,k,l,I_min,5) &
+                        + ch_masked6 * Qin(ij,k,l,I_min,6)
+
+           CQin_max_sum = ch_masked1 * Qin(ij,k,l,I_max,1) &
+                        + ch_masked2 * Qin(ij,k,l,I_max,2) &
+                        + ch_masked3 * Qin(ij,k,l,I_max,3) &
+                        + ch_masked4 * Qin(ij,k,l,I_max,4) &
+                        + ch_masked5 * Qin(ij,k,l,I_max,5) &
+                        + ch_masked6 * Qin(ij,k,l,I_max,6)
+
+           zerosw = 0.5_RP - sign(0.5_RP,abs(Cout_sum)-EPS) ! if Cout_sum = 0, sw = 1
+
+           Qout(ij,k,l,I_min) = ( q(ij,k,l) - CQin_max_sum - qnext_max*(1.0_RP-Cin_sum-Cout_sum+d(ij,k,l)) ) &
+                              / ( Cout_sum + zerosw ) * ( 1.0_RP - zerosw )                                         &
+                              + q(ij,k,l) * zerosw
+           Qout(ij,k,l,I_max) = ( q(ij,k,l) - CQin_min_sum - qnext_min*(1.0_RP-Cin_sum-Cout_sum+d(ij,k,l)) ) &
+                              / ( Cout_sum + zerosw ) * ( 1.0_RP - zerosw )                                         &
+                              + q(ij,k,l) * zerosw
+        enddo
+        enddo
+        !$omp end do
+
+!OCL XFILL
+        !$omp do
+        do j = 1, iall
+        do i = 1, iall
+           if (      i < gmin .OR. i > gmax &
+                .OR. j < gmin .OR. j > gmax ) then
+              ij = (j-1)*iall + i
+
+              Qout(ij,k,l,I_min) = q(ij,k,l)
+              Qout(ij,k,l,I_min) = q(ij,k,l)
+              Qout(ij,k,l,I_max) = q(ij,k,l)
+              Qout(ij,k,l,I_max) = q(ij,k,l)
+           endif
+        enddo
+        enddo
+        !$omp end do
+
+     enddo ! k loop
+     !$omp end parallel
+  enddo ! l loop
+
+\end{LstF90}
+
+There are two $i,j$-double loops.
+%
+In the first one, allowable range of $q$ is defined as \src{qnext_min},
+\src{qnext_max}, then \src{Qout} is calculated.
+%
+And the second double loop is to set halo region.
+
+
+The third section is as follows.
+This section is for the pole region, doing almost the same calculation
+with the normal region.
+
+\begin{LstF90}[name=horizontal_limiter_thuburn,firstnumber=last,breaklines=false,prebreak={}]
+  if ( ADM_have_pl ) then
+     n = ADM_gslf_pl
+
+     do l = 1, ADM_lall_pl
+        do k = 1, ADM_kall
+           do v = ADM_gmin_pl, ADM_gmax_pl
+              ij   = v
+              ijp1 = v + 1
+              ijm1 = v - 1
+              if( ijp1 == ADM_gmax_pl+1 ) ijp1 = ADM_gmin_pl
+              if( ijm1 == ADM_gmin_pl-1 ) ijm1 = ADM_gmax_pl
+
+              q_min_pl = min( q_pl(n,k,l), q_pl(ij,k,l), q_pl(ijm1,k,l), q_pl(ijp1,k,l) )
+              q_max_pl = max( q_pl(n,k,l), q_pl(ij,k,l), q_pl(ijm1,k,l), q_pl(ijp1,k,l) )
+
+              Qin_pl(ij,k,l,I_min,1) = (        cmask_pl(ij,k,l) ) * q_min_pl &
+                                     + ( 1.0_RP-cmask_pl(ij,k,l) ) * BIG
+              Qin_pl(ij,k,l,I_min,2) = (        cmask_pl(ij,k,l) ) * BIG      &
+                                     + ( 1.0_RP-cmask_pl(ij,k,l) ) * q_min_pl
+              Qin_pl(ij,k,l,I_max,1) = (        cmask_pl(ij,k,l) ) * q_max_pl &
+                                     + ( 1.0_RP-cmask_pl(ij,k,l) ) * (-BIG)
+              Qin_pl(ij,k,l,I_max,2) = (        cmask_pl(ij,k,l) ) * (-BIG)   &
+                                     + ( 1.0_RP-cmask_pl(ij,k,l) ) * q_max_pl
+           enddo
+
+           qnext_min_pl = q_pl(n,k,l)
+           qnext_max_pl = q_pl(n,k,l)
+           do v = ADM_gmin_pl, ADM_gmax_pl
+              qnext_min_pl = min( qnext_min_pl, Qin_pl(v,k,l,I_min,1) )
+              qnext_max_pl = max( qnext_max_pl, Qin_pl(v,k,l,I_max,1) )
+           enddo
+
+           Cin_sum_pl      = 0.0_RP
+           Cout_sum_pl     = 0.0_RP
+           CQin_max_sum_pl = 0.0_RP
+           CQin_min_sum_pl = 0.0_RP
+           do v = ADM_gmin_pl, ADM_gmax_pl
+              ch_masked = cmask_pl(v,k,l) * ch_pl(v,k,l)
+
+              Cin_sum_pl      = Cin_sum_pl      + ch_masked
+              Cout_sum_pl     = Cout_sum_pl     - ch_masked + ch_pl (v,k,l)
+              CQin_min_sum_pl = CQin_min_sum_pl + ch_masked * Qin_pl(v,k,l,I_min,1)
+              CQin_max_sum_pl = CQin_max_sum_pl + ch_masked * Qin_pl(v,k,l,I_max,1)
+           enddo
+
+           zerosw = 0.5_RP - sign(0.5_RP,abs(Cout_sum_pl)-EPS) ! if Cout_sum_pl = 0, sw = 1
+
+           Qout_pl(n,k,l,I_min) = ( q_pl(n,k,l) - CQin_max_sum_pl - qnext_max_pl*(1.0_RP-Cin_sum_pl-Cout_sum_pl+d_pl(n,k,l)) ) &
+                                / ( Cout_sum_pl + zerosw ) * ( 1.0_RP - zerosw )                                               &
+                                + q_pl(n,k,l) * zerosw
+           Qout_pl(n,k,l,I_max) = ( q_pl(n,k,l) - CQin_min_sum_pl - qnext_min_pl*(1.0_RP-Cin_sum_pl-Cout_sum_pl+d_pl(n,k,l)) ) &
+                                / ( Cout_sum_pl + zerosw ) * ( 1.0_RP - zerosw )                                               &
+                                + q_pl(n,k,l) * zerosw
+
+        enddo
+     enddo
+  endif
+
+\end{LstF90}
+
+
+In the original subroutine, halo exchange using communication subroutine
+\src{COMM_data_transfer} here.
+%
+In kernelization process, this comunication is omitted.
+%
+Values to be sent is output for the purpose of validation, and values to
+be received are given as an argument, read from input data file in the
+main program of this kernel program.
+
+\begin{LstF90}[name=horizontal_limiter_thuburn,firstnumber=last]
+  !#####################################################################KERNEL
+  call DEBUG_rapend  ('____horizontal_adv_limiter')
+  Qout_pl(ADM_gmin_pl:ADM_gmax_pl,:,:,:) = 0.0_RP
+
+  Qout_prev   (:,:,:,:) = Qout        (:,:,:,:)
+  Qout_prev_pl(:,:,:,:) = Qout_pl     (:,:,:,:)
+  !call COMM_data_transfer( Qout(:,:,:,:), Qout_pl(:,:,:,:) )
+  Qout        (:,:,:,:) = Qout_post   (:,:,:,:)
+  Qout_pl     (:,:,:,:) = Qout_post_pl(:,:,:,:)
+  call DEBUG_rapstart('____horizontal_adv_limiter')
+  !#####################################################################KERNEL
+
+\end{LstF90}
+
+The next section is as follows.
+
+\begin{LstF90}[name=horizontal_limiter_thuburn,firstnumber=last,breaklines=false,prebreak={},basewidth=.43em,xrightmargin=-1em]
+  !---- apply inflow/outflow limiter
+  do l = 1, ADM_lall
+     !$omp parallel do default(none),private(i,j,k,ij,ip1j,ip1jp1,ijp1), &
+     !$omp shared(l,gmin,gmax,kall,iall,q_a,cmask,Qin,Qout)
+     do k = 1, kall
+        do j = gmin-1, gmax
+        do i = gmin-1, gmax
+           ij     = (j-1)*iall + i
+           ip1j   = ij + 1
+           ip1jp1 = ij + iall + 1
+           ijp1   = ij + iall
+
+           q_a(ij,k,l,1) = (        cmask(ij,k,l,1) ) * min( max( q_a(ij,k,l,1), Qin (ij    ,k,l,I_min,1) ), Qin (ij    ,k,l,I_max,1) ) &
+                         + ( 1.0_RP-cmask(ij,k,l,1) ) * min( max( q_a(ij,k,l,1), Qin (ip1j  ,k,l,I_min,4) ), Qin (ip1j  ,k,l,I_max,4) )
+           q_a(ij,k,l,1) = (        cmask(ij,k,l,1) ) * max( min( q_a(ij,k,l,1), Qout(ip1j  ,k,l,I_max  ) ), Qout(ip1j  ,k,l,I_min  ) ) &
+                         + ( 1.0_RP-cmask(ij,k,l,1) ) * max( min( q_a(ij,k,l,1), Qout(ij    ,k,l,I_max  ) ), Qout(ij    ,k,l,I_min  ) )
+           q_a(ip1j,k,l,4) = q_a(ij,k,l,1)
+
+           q_a(ij,k,l,2) = (        cmask(ij,k,l,2) ) * min( max( q_a(ij,k,l,2), Qin (ij    ,k,l,I_min,2) ), Qin (ij    ,k,l,I_max,2) ) &
+                         + ( 1.0_RP-cmask(ij,k,l,2) ) * min( max( q_a(ij,k,l,2), Qin (ip1jp1,k,l,I_min,5) ), Qin (ip1jp1,k,l,I_max,5) )
+           q_a(ij,k,l,2) = (        cmask(ij,k,l,2) ) * max( min( q_a(ij,k,l,2), Qout(ip1jp1,k,l,I_max  ) ), Qout(ip1jp1,k,l,I_min  ) ) &
+                         + ( 1.0_RP-cmask(ij,k,l,2) ) * max( min( q_a(ij,k,l,2), Qout(ij    ,k,l,I_max  ) ), Qout(ij    ,k,l,I_min  ) )
+           q_a(ip1jp1,k,l,5) = q_a(ij,k,l,2)
+
+           q_a(ij,k,l,3) = (        cmask(ij,k,l,3) ) * min( max( q_a(ij,k,l,3), Qin (ij    ,k,l,I_min,3) ), Qin (ij    ,k,l,I_max,3) ) &
+                         + ( 1.0_RP-cmask(ij,k,l,3) ) * min( max( q_a(ij,k,l,3), Qin (ijp1  ,k,l,I_min,6) ), Qin (ijp1  ,k,l,I_max,6) )
+           q_a(ij,k,l,3) = (        cmask(ij,k,l,3) ) * max( min( q_a(ij,k,l,3), Qout(ijp1  ,k,l,I_max  ) ), Qout(ijp1  ,k,l,I_min  ) ) &
+                         + ( 1.0_RP-cmask(ij,k,l,3) ) * max( min( q_a(ij,k,l,3), Qout(ij    ,k,l,I_max  ) ), Qout(ij    ,k,l,I_min  ) )
+           q_a(ijp1,k,l,6) = q_a(ij,k,l,3)
+        enddo
+        enddo
+     enddo
+     !$omp end parallel do
+  enddo
+
+\end{LstF90}%$
+
+In new $l$- and $k$- double loop, there is a $i,j$-double loop, calculating
+limitter apllied tracer quantities at each cell faces, i.e. edges of the
+hexagonal control volume.
+%
+Note that only 1st, 2nd, 3rd edge must be calculated, because other 3
+edges' value is the same with other grid's 1st, 2nd, or 3rd edge.
+
+The last part of this subroutine is as follows.
+
+\begin{LstF90}[name=horizontal_limiter_thuburn,firstnumber=last]
+  if ( ADM_have_pl ) then
+     n = ADM_gslf_pl
+
+     do l = 1, ADM_lall_pl
+     do k = 1, ADM_kall
+     do v = ADM_gmin_pl, ADM_gmax_pl
+        q_a_pl(v,k,l) = (        cmask_pl(v,k,l) ) * min(max(q_a_pl(v,k,l), Qin_pl (v,k,l,I_min,1)), Qin_pl (v,k,l,I_max,1)) &
+                      + ( 1.0_RP-cmask_pl(v,k,l) ) * min(max(q_a_pl(v,k,l), Qin_pl (v,k,l,I_min,2)), Qin_pl (v,k,l,I_max,2))
+        q_a_pl(v,k,l) = (        cmask_pl(v,k,l) ) * max(min(q_a_pl(v,k,l), Qout_pl(v,k,l,I_max  )), Qout_pl(v,k,l,I_min  )) &
+                      + ( 1.0_RP-cmask_pl(v,k,l) ) * max(min(q_a_pl(v,k,l), Qout_pl(n,k,l,I_max  )), Qout_pl(n,k,l,I_min  ))
+     enddo
+     enddo
+     enddo
+  endif
+
+  call DEBUG_rapend  ('____horizontal_adv_limiter')
+
+  return
+end subroutine horizontal_limiter_thuburn
+\end{LstF90}
+
+In this part, \src{q_a} in the pole region are calculated, with almost
+the same procedure with the normal region.
+
+
+
+\subsection{Input data and result}
+
+Max/min/sum of input/output data of the kernel subroutine are output as
+a log.
+%
+Below is an example of \src{$IAB_SYS=Ubuntu-gnu-ompi} case.
+
+
+\begin{LstLog}
+ ### Input ###
+ +check[q_a_prev        ] max=  3.1443592333952495E+02,min= -3.3659800625927818E+02,sum=  1.4867286349717416E+07
+ +check[q_a_prev_pl     ] max=  7.5768030875957253E+00,min= -5.6211573453294959E-15,sum=  1.5762773946695211E+03
+ +check[check_q_a       ] max=  3.0706553064103554E+02,min= -2.3487181740471829E+02,sum=  1.4857441189951191E+07
+ +check[check_q_a_pl    ] max=  6.5571419615446418E+00,min= -5.6211573453294959E-15,sum=  1.5683664645246540E+03
+ +check[q               ] max=  7.3394566876316425E+00,min=  0.0000000000000000E+00,sum=  2.4959622235983950E+06
+ +check[q_pl            ] max=  6.5571419615446418E+00,min=  0.0000000000000000E+00,sum=  1.8536812127383619E+03
+ +check[d               ] max=  1.7307542155642468E-05,min= -1.9433424502805651E-05,sum=  6.2175140984963743E-06
+ +check[d_pl            ] max=  6.2231074370491122E-06,min= -2.0788320527281462E-05,sum= -1.1073365231406677E-03
+ +check[ch              ] max=  2.5115202433354633E-01,min= -2.8726813406847629E-01,sum= -6.8752454869001423E-01
+ +check[ch_pl           ] max=  1.9806049765030476E-01,min= -1.2208152245920290E+01,sum= -3.1022849107616275E+02
+ +check[cmask           ] max=  1.0000000000000000E+00,min=  0.0000000000000000E+00,sum=  2.1729060000000000E+06
+ +check[cmask_pl        ] max=  1.0000000000000000E+00,min=  0.0000000000000000E+00,sum=  2.1800000000000000E+02
+ +check[check_Qout_prev ] max=  2.5201719369799781E+05,min= -7.0121044696269173E+05,sum=  4.7462261170534119E+06
+ +check[check_Qout_prev_] max=  3.4849498839973911E+01,min= -3.6368061161685844E+01,sum=  7.2956220495347202E+02
+ +check[Qout_post       ] max=  2.5201719369799781E+05,min= -7.0121044696269173E+05,sum=  4.7387405453230906E+06
+ +check[Qout_post_pl    ] max=  5.9738451374182347E+01,min= -3.6368061161685844E+01,sum=  4.0063169963931473E+03
+ ### Output ###
+ +check[q_a             ] max=  3.0706553064103554E+02,min= -2.3487181740471829E+02,sum=  1.4857441189951191E+07
+ +check[q_a_pl          ] max=  6.5571419615446418E+00,min= -5.6211573453294959E-15,sum=  1.5683664645246540E+03
+ +check[Qout_prev       ] max=  2.5201719369799781E+05,min= -7.0121044696269173E+05,sum=  4.7462261170534119E+06
+ +check[Qout_prev_pl    ] max=  3.4849498839973911E+01,min= -3.6368061161685844E+01,sum=  7.2956220495347202E+02
+ ### Validation : grid-by-grid diff ###
+ +check[check_q_a       ] max=  0.0000000000000000E+00,min=  0.0000000000000000E+00,sum=  0.0000000000000000E+00
+ +check[check_q_a_pl    ] max=  0.0000000000000000E+00,min=  0.0000000000000000E+00,sum=  0.0000000000000000E+00
+ +check[check_Qout_prev ] max=  0.0000000000000000E+00,min=  0.0000000000000000E+00,sum=  0.0000000000000000E+00
+ +check[check_Qout_prev_] max=  0.0000000000000000E+00,min=  0.0000000000000000E+00,sum=  0.0000000000000000E+00
+ *** Finish kernel
+\end{LstLog}
+
+Check the lines below \src{``Validation : grid-by-grid diff''} line,
+that shows difference between calculated output array and
+pre-calculated reference array.
+These should be zero or enough small to be acceptable.
+
+There are sample output log files in \file{reference/}
+in each kernel program directory, for reference purpose.
+
+\subsection{Sample of perfomance result}
+
+Here's an example of the performance result part of the log output.
+Below is an example executed with the machine environment described in \autoref{s:measuring_env}.
+%
+Note that in this program kernel part is iterated one time.
+
+\begin{LstLog}
+ *** Computational Time Report
+ *** ID=001 : MAIN_dyn_horiz_adv_limiter       T=     0.180 N=      1
+ *** ID=002 : ____horizontal_adv_limiter       T=     0.164 N=      2
+\end{LstLog}

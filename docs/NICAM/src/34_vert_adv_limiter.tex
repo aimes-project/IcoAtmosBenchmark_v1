@@ -1,0 +1,332 @@
+\section{\src{dyn_vert_adv_limiter}}
+\label{dyn_vert_adv_limiter}
+
+\subsection{Description}
+
+Kernel \src{dyn_vert_adv_limiter} is taken from the original
+subroutine \src{vertical_limiter_thuburn} in \NICAM.
+%
+This subroutine is originally defined in \src{mod_src_tracer}, that is
+to contain several subroutines for tracer advection.
+%
+Subroutine \src{vertical_limiter_thuburn} is to ensure distribution of
+tracer quantities' monotonicity in advection scheme, using the flux
+limitter proposed by \cite{Thuburn:1996in}.
+%
+This subroutine is for vertical advection only and horizontal advection
+is treated by other subroutine \src{horizontal_limiter_thuburn}, which
+is also kernelized in this pacakage (See \autoref{dyn_horiz_adv_limiter}).
+%
+See section 4. in \cite{Tomita2010ecmwf} for details of the tracer scheme in \NICAM.
+
+
+\subsection{Discretization and code}
+
+Argument lists and local variables definition part of this subroutine is
+as follows.
+
+\begin{LstF90}[name=vertical_limiter_thuburn]
+subroutine vertical_limiter_thuburn( &
+     q_h, q_h_pl, &
+     q,   q_pl,   &
+     d,   d_pl,   &
+     ck,  ck_pl   )
+!ESC!    use mod_const, only: &
+!ESC!       CONST_HUGE, &
+!ESC!       CONST_EPS
+!ESC!    use mod_adm, only: &
+!ESC!       ADM_have_pl, &
+!ESC!       ADM_gall,    &
+!ESC!       ADM_gall_pl, &
+!ESC!       ADM_lall,    &
+!ESC!       ADM_lall_pl, &
+!ESC!       ADM_kall,    &
+!ESC!       ADM_kmin,    &
+!ESC!       ADM_kmax
+  implicit none
+
+  real(RP), intent(inout) :: q_h   (ADM_gall   ,ADM_kall,ADM_lall   )
+  real(RP), intent(inout) :: q_h_pl(ADM_gall_pl,ADM_kall,ADM_lall_pl)
+  real(RP), intent(in)    :: q     (ADM_gall   ,ADM_kall,ADM_lall   )
+  real(RP), intent(in)    :: q_pl  (ADM_gall_pl,ADM_kall,ADM_lall_pl)
+  real(RP), intent(in)    :: d     (ADM_gall   ,ADM_kall,ADM_lall   )
+  real(RP), intent(in)    :: d_pl  (ADM_gall_pl,ADM_kall,ADM_lall_pl)
+  real(RP), intent(in)    :: ck    (ADM_gall   ,ADM_kall,ADM_lall   ,2)
+  real(RP), intent(in)    :: ck_pl (ADM_gall_pl,ADM_kall,ADM_lall_pl,2)
+
+  real(RP) :: Qout_min_k
+  real(RP) :: Qout_max_k
+  real(RP) :: Qout_min_km1(ADM_gall)
+  real(RP) :: Qout_max_km1(ADM_gall)
+  real(RP) :: Qout_min_pl(ADM_gall_pl,ADM_kall)
+  real(RP) :: Qout_max_pl(ADM_gall_pl,ADM_kall)
+
+  real(RP) :: Qin_minL, Qin_maxL
+  real(RP) :: Qin_minU, Qin_maxU
+  real(RP) :: qnext_min, qnext_max
+  real(RP) :: Cin, Cout
+  real(RP) :: CQin_min, CQin_max
+  real(RP) :: inflagL, inflagU
+  real(RP) :: zerosw
+
+  integer  :: gall, kmin, kmax
+  real(RP) :: EPS, BIG
+
+  integer  :: g, k, l
+  !---------------------------------------------------------------------------
+\end{LstF90}
+%
+Here \src{q_h} is $q$ at half level of the vertical layer, which modified by the flux limiter.
+%
+\src{q} is $q$ at grid point,
+\src{ck} is Courant number,
+\src{d} is a correction factor derived from an artificial viscosity for the total density.
+%
+Note that \src{ck} has the 4th dimension whose size is 2, which specify
+lower/upper face, i.e. half integer level.
+
+
+
+The first section of the subroutine is as follows.
+
+\begin{LstF90}[name=vertical_limiter_thuburn]
+  call DEBUG_rapstart('____vertical_adv_limiter')
+
+  gall = ADM_gall
+  kmin = ADM_kmin
+  kmax = ADM_kmax
+
+  EPS  = CONST_EPS
+  BIG  = CONST_HUGE
+
+  do l = 1, ADM_lall
+     !$omp parallel default(none), &
+     !$omp private(g,k,zerosw,inflagL,inflagU,Qin_minL,Qin_minU,Qin_maxL,Qin_maxU, &
+     !$omp         qnext_min,qnext_max,Cin,Cout,CQin_min,CQin_max,Qout_min_k,Qout_max_k),  &
+     !$omp shared(l,gall,kmin,kmax,q_h,ck,q,d,Qout_min_km1,Qout_max_km1,EPS,BIG)
+
+!OCL XFILL
+       !$omp do
+       do g = 1, gall
+          k = kmin ! peeling
+
+          inflagL = 0.5_RP - sign(0.5_RP,ck(g,k  ,l,1)) ! incoming flux: flag=1
+          inflagU = 0.5_RP + sign(0.5_RP,ck(g,k+1,l,1)) ! incoming flux: flag=1
+
+          Qin_minL = min( q(g,k,l), q(g,k-1,l) ) + ( 1.0_RP-inflagL ) * BIG
+          Qin_minU = min( q(g,k,l), q(g,k+1,l) ) + ( 1.0_RP-inflagU ) * BIG
+          Qin_maxL = max( q(g,k,l), q(g,k-1,l) ) - ( 1.0_RP-inflagL ) * BIG
+          Qin_maxU = max( q(g,k,l), q(g,k+1,l) ) - ( 1.0_RP-inflagU ) * BIG
+
+          qnext_min = min( Qin_minL, Qin_minU, q(g,k,l) )
+          qnext_max = max( Qin_maxL, Qin_maxU, q(g,k,l) )
+
+          Cin      = (        inflagL ) * ck(g,k,l,1) &
+                   + (        inflagU ) * ck(g,k,l,2)
+          Cout     = ( 1.0_RP-inflagL ) * ck(g,k,l,1) &
+                   + ( 1.0_RP-inflagU ) * ck(g,k,l,2)
+
+          CQin_min = (        inflagL ) * ck(g,k,l,1) * Qin_minL &
+                   + (        inflagU ) * ck(g,k,l,2) * Qin_minU
+          CQin_max = (        inflagL ) * ck(g,k,l,1) * Qin_maxL &
+                   + (        inflagU ) * ck(g,k,l,2) * Qin_maxU
+
+          zerosw = 0.5_RP - sign(0.5_RP,abs(Cout)-EPS) ! if Cout = 0, sw = 1
+
+          Qout_min_k = ( ( q(g,k,l) - qnext_max ) + qnext_max*(Cin+Cout-d(g,k,l)) - CQin_max ) &
+                     / ( Cout + zerosw ) * ( 1.0_RP - zerosw )                                 &
+                     + q(g,k,l) * zerosw
+          Qout_max_k = ( ( q(g,k,l) - qnext_min ) + qnext_min*(Cin+Cout-d(g,k,l)) - CQin_min ) &
+                     / ( Cout + zerosw ) * ( 1.0_RP - zerosw )                                 &
+                     + q(g,k,l) * zerosw
+
+          Qout_min_km1(g) = Qout_min_k
+          Qout_max_km1(g) = Qout_max_k
+       enddo
+       !$omp end do
+
+       do k = kmin+1, kmax
+!OCL XFILL
+          !$omp do
+          do g = 1, gall
+             inflagL = 0.5_RP - sign(0.5_RP,ck(g,k  ,l,1)) ! incoming flux: flag=1
+             inflagU = 0.5_RP + sign(0.5_RP,ck(g,k+1,l,1)) ! incoming flux: flag=1
+
+             Qin_minL = min( q(g,k,l), q(g,k-1,l) ) + ( 1.0_RP-inflagL ) * BIG
+             Qin_minU = min( q(g,k,l), q(g,k+1,l) ) + ( 1.0_RP-inflagU ) * BIG
+             Qin_maxL = max( q(g,k,l), q(g,k-1,l) ) - ( 1.0_RP-inflagL ) * BIG
+             Qin_maxU = max( q(g,k,l), q(g,k+1,l) ) - ( 1.0_RP-inflagU ) * BIG
+
+             qnext_min = min( Qin_minL, Qin_minU, q(g,k,l) )
+             qnext_max = max( Qin_maxL, Qin_maxU, q(g,k,l) )
+
+             Cin      = (        inflagL ) * ck(g,k,l,1) &
+                      + (        inflagU ) * ck(g,k,l,2)
+             Cout     = ( 1.0_RP-inflagL ) * ck(g,k,l,1) &
+                      + ( 1.0_RP-inflagU ) * ck(g,k,l,2)
+
+             CQin_min = (        inflagL ) * ck(g,k,l,1) * Qin_minL &
+                      + (        inflagU ) * ck(g,k,l,2) * Qin_minU
+             CQin_max = (        inflagL ) * ck(g,k,l,1) * Qin_maxL &
+                      + (        inflagU ) * ck(g,k,l,2) * Qin_maxU
+
+             zerosw = 0.5_RP - sign(0.5_RP,abs(Cout)-EPS) ! if Cout = 0, sw = 1
+
+             Qout_min_k = ( ( q(g,k,l) - qnext_max ) + qnext_max*(Cin+Cout-d(g,k,l)) - CQin_max ) &
+                        / ( Cout + zerosw ) * ( 1.0_RP - zerosw )                                 &
+                        + q(g,k,l) * zerosw
+             Qout_max_k = ( ( q(g,k,l) - qnext_min ) + qnext_min*(Cin+Cout-d(g,k,l)) - CQin_min ) &
+                        / ( Cout + zerosw ) * ( 1.0_RP - zerosw )                                 &
+                        + q(g,k,l) * zerosw
+
+             q_h(g,k,l) = (        inflagL ) * max( min( q_h(g,k,l), Qout_max_km1(g) ), Qout_min_km1(g) ) &
+                        + ( 1.0_RP-inflagL ) * max( min( q_h(g,k,l), Qout_max_k      ), Qout_min_k      )
+
+             Qout_min_km1(g) = Qout_min_k
+             Qout_max_km1(g) = Qout_max_k
+          enddo
+          !$omp end do
+       enddo
+
+     !$omp end parallel
+  enddo
+
+\end{LstF90}
+%
+In the long $l$-loop, there seems to be two blocks, but they are almost
+the same, except that the first one is only for \src{kmin}, that is the
+lowest level, and the second one is the rest of \src{k} to the top level.
+%
+\src{inflagL} and \src{inflagU} are flag that takes the value $1$ if there is an
+incoming flux to the current layer through the lower/upper face.
+%
+\src{Qin_*} are the smaller/larger values of $q$ at lower/upper
+neighboring layer, that is meaningful only if inflag at lower/upper is $1$.
+%
+\src{Cin} and \src{Cout} are the sum of Courant number at both face of
+the layer, for example, \src{Cin} is the sum of \src{ck} at lower face
+and upper face, if both of \src{inflagL} and \src{inflagU} is $1$, which
+means that there are inflow through both lower/upper face.
+%
+\src{CQin_*} are the min/max of \src{Cin} times \src{Qin_*}, which
+specify the minimun/maximum of inflow.
+%
+Then \src{CQout_*} are calculated.
+%
+Finaly \src{q_h} is calculated, which is bounded by \src{Qout_*}.
+
+
+The second section of this subroutine is as follows.
+
+\begin{LstF90}[name=vertical_limiter_thuburn]
+  if ( ADM_have_pl ) then
+     do l = 1, ADM_lall_pl
+
+        do k = ADM_kmin, ADM_kmax
+          do g = 1, ADM_gall_pl
+             inflagL = 0.5_RP - sign(0.5_RP,ck_pl(g,k  ,l,1)) ! incoming flux: flag=1
+             inflagU = 0.5_RP + sign(0.5_RP,ck_pl(g,k+1,l,1)) ! incoming flux: flag=1
+
+             Qin_minL = min( q_pl(g,k,l), q_pl(g,k-1,l) ) + ( 1.0_RP-inflagL ) * BIG
+             Qin_minU = min( q_pl(g,k,l), q_pl(g,k+1,l) ) + ( 1.0_RP-inflagU ) * BIG
+             Qin_maxL = max( q_pl(g,k,l), q_pl(g,k-1,l) ) - ( 1.0_RP-inflagL ) * BIG
+             Qin_maxU = max( q_pl(g,k,l), q_pl(g,k+1,l) ) - ( 1.0_RP-inflagU ) * BIG
+
+             qnext_min = min( Qin_minL, Qin_minU, q_pl(g,k,l) )
+             qnext_max = max( Qin_maxL, Qin_maxU, q_pl(g,k,l) )
+
+             Cin      = (        inflagL ) * ( ck_pl(g,k,l,1) ) &
+                      + (        inflagU ) * ( ck_pl(g,k,l,2) )
+             Cout     = ( 1.0_RP-inflagL ) * ( ck_pl(g,k,l,1) ) &
+                      + ( 1.0_RP-inflagU ) * ( ck_pl(g,k,l,2) )
+
+             CQin_max = (        inflagL ) * ( ck_pl(g,k,l,1) * Qin_maxL ) &
+                      + (        inflagU ) * ( ck_pl(g,k,l,2) * Qin_maxU )
+             CQin_min = (        inflagL ) * ( ck_pl(g,k,l,1) * Qin_minL ) &
+                      + (        inflagU ) * ( ck_pl(g,k,l,2) * Qin_minU )
+
+             zerosw = 0.5_RP - sign(0.5_RP,abs(Cout)-EPS) ! if Cout = 0, sw = 1
+
+             Qout_min_pl(g,k) = ( ( q_pl(g,k,l) - qnext_max ) + qnext_max*(Cin+Cout-d_pl(g,k,l)) - CQin_max ) &
+                              / ( Cout + zerosw ) * ( 1.0_RP - zerosw )                                       &
+                              + q_pl(g,k,l) * zerosw
+             Qout_max_pl(g,k) = ( ( q_pl(g,k,l) - qnext_min ) + qnext_min*(Cin+Cout-d_pl(g,k,l)) - CQin_min ) &
+                              / ( Cout + zerosw ) * ( 1.0_RP - zerosw )                                       &
+                              + q_pl(g,k,l) * zerosw
+          enddo
+          enddo
+
+        do k = ADM_kmin+1, ADM_kmax
+        do g = 1, ADM_gall_pl
+           inflagL = 0.5_RP - sign(0.5_RP,ck_pl(g,k,l,1)) ! incoming flux: flag=1
+
+           q_h_pl(g,k,l) = (        inflagL ) * max( min( q_h_pl(g,k,l), Qout_max_pl(g,k-1) ), Qout_min_pl(g,k-1) ) &
+                         + ( 1.0_RP-inflagL ) * max( min( q_h_pl(g,k,l), Qout_max_pl(g,k  ) ), Qout_min_pl(g,k  ) )
+        enddo
+        enddo
+
+     enddo
+  endif
+
+  call DEBUG_rapend  ('____vertical_adv_limiter')
+
+  return
+end subroutine vertical_limiter_thuburn
+\end{LstF90}
+%
+This section is for the pole region, and doing almost the same procedure
+with the regular region.
+
+
+
+\subsection{Input data and result}
+
+
+Max/min/sum of input/output data of the kernel subroutine are output as
+a log.
+%
+Below is an example of \src{$IAB_SYS=Ubuntu-gnu-ompi} case.
+
+\begin{LstLog}
+ ### Input ###
+ +check[q_h_prev        ] max=  7.2663804548391786E+00,min=  0.0000000000000000E+00,sum=  2.4959084727640115E+06
+ +check[q_h_prev_pl     ] max=  6.4080655438269076E+00,min=  0.0000000000000000E+00,sum=  1.8117616747458535E+03
+ +check[check_q_h       ] max=  7.3763287914601054E+00,min=  0.0000000000000000E+00,sum=  2.4996023860691669E+06
+ +check[check_q_h_pl    ] max=  7.0217121722230473E+00,min=  0.0000000000000000E+00,sum=  1.8122948877569047E+03
+ +check[q               ] max=  7.3763287914601054E+00,min=  0.0000000000000000E+00,sum=  2.4959084727641600E+06
+ +check[q_pl            ] max=  7.0217121722230473E+00,min=  0.0000000000000000E+00,sum=  1.8117616747458526E+03
+ +check[d               ] max= -0.0000000000000000E+00,min= -0.0000000000000000E+00,sum=  0.0000000000000000E+00
+ +check[d_pl            ] max=  0.0000000000000000E+00,min=  0.0000000000000000E+00,sum=  0.0000000000000000E+00
+ +check[ck              ] max=  3.1666977358687308E-02,min= -3.3842023700197510E-02,sum= -3.3888707532669278E+00
+ +check[ck_pl           ] max=  2.8817336749971920E-02,min= -3.0878557008837175E-02,sum= -2.9483051886829596E-02
+ ### Output ###
+ +check[q_h             ] max=  7.3763287914601054E+00,min=  0.0000000000000000E+00,sum=  2.4996023860691669E+06
+ +check[q_h_pl          ] max=  7.0217121722230473E+00,min=  0.0000000000000000E+00,sum=  1.8122948877569047E+03
+ ### Validation : grid-by-grid diff ###
+ +check[check_q_h       ] max=  0.0000000000000000E+00,min=  0.0000000000000000E+00,sum=  0.0000000000000000E+00
+ +check[check_q_h_pl    ] max=  0.0000000000000000E+00,min=  0.0000000000000000E+00,sum=  0.0000000000000000E+00
+ *** Finish kernel
+\end{LstLog}
+
+Check the lines below \src{``Validation : grid-by-grid diff''} line,
+that shows difference between calculated output array and
+pre-calculated reference array.
+These should be zero or enough small to be acceptable.
+
+There are sample output log files in \file{reference/}
+in each kernel program directory, for reference purpose.
+
+
+\subsection{Sample of perfomance result}
+
+Here's an example of the performance result part of the log output.
+Below is an example executed with the machine environment described in \autoref{s:measuring_env}.
+%
+Note that in this program kernel part is iterated one time.
+
+\begin{LstLog}
+ *** Computational Time Report
+ *** ID=001 : MAIN_dyn_vert_adv_limiter        T=     0.032 N=      1
+ *** ID=002 : ____vertical_adv_limiter         T=     0.032 N=      1
+\end{LstLog}
+

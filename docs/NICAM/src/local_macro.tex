@@ -1,0 +1,144 @@
+%Model Names
+\newcommand{\IAB}{{IcoAtmosBenchmark }}
+\newcommand{\NICAM}{\textsl{NICAM}\xspace}
+\newcommand{\DYNAMICO}{\textsl{DYNAMICO}\xspace}
+\newcommand{\ICON}{\textsl{ICON}\xspace}
+
+\newcommand{\Item}[1]{~\\\noindent{\bf \large \underline{#1}}\\}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% source list
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\renewcommand{\lstlistingname}{List}
+% \renewcommand{\lstlistlistingname}{リスト目次}
+% \renewcommand{\lstlistoflistings}{\begingroup
+%   \renewcommand{\lstlistingname}{リスト目次}
+%   \tocfile{\lstlistingname}{lol}
+% \endgroup}
+
+%%%
+\definecolor{darkgreen}{rgb}{0.0, 0.2, 0.13}
+
+
+\lstloadlanguages{XML,[90]Fortran,perl,c,python,bash,csh}
+\definecolor{lstbgcolor} {gray}{0.95}
+
+%%% default style
+\lstset{%
+numberstyle=\tiny,%
+basicstyle=\scriptsize\ttfamily,%
+keywordstyle={\color{blue}},%
+commentstyle={\slshape\color[named]{Brown}},%
+columns=[l]{fullflexible},%
+% breaklines=true,breakatwhitespace=true,
+% prebreak=\raisebox{0ex}[0ex][0ex]{\ensuremath{\color{red}\hookleftarrow\space}},
+aboveskip=2\medskipamount,belowskip=2\medskipamount,%
+backgroundcolor={\color{lstbgcolor}},%
+frame=single,framerule=0pt,%
+framexleftmargin=2pt,framexrightmargin=2pt,framesep=5pt,
+numbers=none}
+
+\lstdefinelanguage{NCL}{
+sensitive=true,%
+morekeywords={load,do,if,else,end,system,print,then,.not.,delete},%
+morestring=[b]",%"
+stringstyle=\color{darkgreen},%
+morecomment=[l]{;}
+}
+
+\lstdefinestyle{XML}{language=XML,%
+keywordstyle=\color{Maroon},%
+tagstyle=\color{DarkBlue},%
+usekeywordsintag=true,%
+%markfirstintag=true,%
+morestring=*[b]",%"
+alsoletter={\#},
+stringstyle=\color{darkgreen},%
+morecomment=[s][\slshape\color{gray}]{<?}{?>},%
+morecomment=[n][\slshape\color{gray}]{<!--}{-->},%
+commentstyle=\slshape\color{gray},%
+emphstyle=\itshape,
+breaklines=true,breakatwhitespace=true,%
+}
+
+\lstdefinestyle{F90}{%
+language=[90]Fortran,%
+columns=fixed, basewidth=.44em,%
+stringstyle=\color{darkgreen},%
+xrightmargin=0em, xleftmargin=0em,%
+numbers=left,%
+showlines=true,%
+deletekeywords={data} }
+
+\lstdefinestyle{Bash}{%
+language=bash,%
+deletekeywords={go,true}}
+
+\lstdefinestyle{Csh}{%
+language=csh,%
+deletekeywords={go,true}}
+
+\lstdefinestyle{Python}{%
+language=python}
+
+\lstdefinestyle{Ncl}{%
+language=NCL}
+
+%%% for XML script
+\lstnewenvironment{LstXML}[1][]%
+{\lstset{style=Xml,#1}}{}
+
+%%% for F90 source
+\lstnewenvironment{LstF90}[1][]%
+{\lstset{style=F90,#1}}{}
+
+%%% for Bash script
+\lstnewenvironment{LstBash}[1][]%
+{\lstset{style=Bash,#1}}{}
+
+%%% for interactive shell
+\lstnewenvironment{LstIntSh}[1][]%
+{\lstset{style=Bash,language=sh,numbers=none,keywordstyle={},#1}}{}
+
+%%% for (t)csh script
+\lstnewenvironment{LstCsh}[1][]%
+{\lstset{style=Csh,#1}}{}
+
+%%% for interactive (t)cshell
+\lstnewenvironment{LstIntCsh}[1][]%
+{\lstset{style=Csh,language=sh,numbers=none,keywordstyle={},#1}}{}
+
+%%% for Python script
+\lstnewenvironment{LstPy}[1][]%
+{\lstset{style=Python,#1}}{}
+
+\lstnewenvironment{LstNCL}[1][]%
+{\lstset{style=Ncl,#1}}{}
+
+%%% For output log
+\lstnewenvironment{LstLog}[1][]%
+{\lstset{
+numbers=none,%
+columns=[r]fixed,basewidth=0.45em,%
+#1%
+}}{}
+%%% for inline
+\lstMakeShortInline[basicstyle=\normalsize\ttfamily]|
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% misc new commands
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\newcommand{\file}[1]{\path{#1}}
+
+\newcommand{\src}[1]{\texttt{\protect\detokenize{#1}}}
+
+\newcommand{\tool}[1]{\textsf{\protect\detokenize{#1}}}
+
+
+
+\newcommand{\TODO}[1]{\fbox{{\Huge \color[named]{Red} #1}}}
+
+
+\newcommand{\DP}[2]{\frac{\partial #1}{\partial #2}}

@@ -1,0 +1,1479 @@
+\section{\src{communication}}
+
+\subsection{Description}
+
+Kernel \src{communication} is taken from the original subroutine
+\src{COMM_setup} in \NICAM.
+%
+This subroutine is originally defined in module \src{mod_comm}.
+%
+This module defines all communication stuff.
+%
+Subroutine \src{COMM_setup} prepares necessary information for
+communication, such as connection list of regions.
+
+As described in \autoref{s:mpi_openmpi} this kernel only needs MPI
+library to compile/execute.
+
+\subsection{Discretization and code}
+
+
+
+\subsubsection{\src{COMM_setup}}
+
+Main subroutine of this kernel program \src{COMM_setup} is as follows.
+
+\begin{LstF90}
+  subroutine COMM_setup
+    use mod_process, only: &
+       PRC_MPIstop
+    use mod_adm, only: &
+       RGNMNG_r2p_pl, &
+       I_NPL,         &
+       I_SPL
+    implicit none
+
+    namelist / COMMPARAM / &
+       COMM_apply_barrier, &
+       COMM_varmax,        &
+       debug,              &
+       testonly
+
+    integer :: ierr
+    !---------------------------------------------------------------------------
+
+    !--- read parameters
+    write(IO_FID_LOG,*)
+    write(IO_FID_LOG,*) '+++ Module[comm]/Category[common share]'
+    rewind(IO_FID_CONF)
+    read(IO_FID_CONF,nml=COMMPARAM,iostat=ierr)
+    if ( ierr < 0 ) then
+       write(IO_FID_LOG,*) '*** COMMPARAM is not specified. use default.'
+    elseif( ierr > 0 ) then
+       write(*         ,*) 'xxx Not appropriate names in namelist COMMPARAM. STOP.'
+       write(IO_FID_LOG,*) 'xxx Not appropriate names in namelist COMMPARAM. STOP.'
+       call PRC_MPIstop
+    endif
+    write(IO_FID_LOG,nml=COMMPARAM)
+
+    if ( RP == DP ) then
+       COMM_datatype = MPI_DOUBLE_PRECISION
+    elseif( RP == SP ) then
+       COMM_datatype = MPI_REAL
+    else
+       write(*,*) 'xxx precision is not supportd'
+       call PRC_MPIstop
+    endif
+
+    if (       RGNMNG_r2p_pl(I_NPL) < 0 &
+         .AND. RGNMNG_r2p_pl(I_SPL) < 0 ) then
+       COMM_pl = .false.
+    endif
+
+    write(IO_FID_LOG,*)
+    write(IO_FID_LOG,*) '====== communication information ======'
+
+    call COMM_list_generate
+
+    call COMM_sortdest
+    call COMM_sortdest_pl
+    call COMM_sortdest_singular
+
+    allocate( REQ_list( Recv_nmax_r2r + Send_nmax_r2r &
+                      + Recv_nmax_p2r + Send_nmax_p2r &
+                      + Recv_nmax_r2p + Send_nmax_r2p ) )
+
+    if( testonly ) call COMM_debugtest
+
+    return
+  end subroutine COMM_setup
+\end{LstF90}
+
+This subroutine calls five private subroutines after reading control
+namelist \src{COMMPARAM}.
+%
+Note that as shown below, control variable \src{testonly} is set as
+true, \src{COMM_debugtest} is also called.
+
+
+\subsubsection{\src{COMM_list_generate}}
+
+Subroutine \src{COMM_list_generate} is to setup an array \src{rellist},
+that contains several information about the relation between grid points
+including halo.
+
+Initial part of this subroutine is as follows.
+\begin{LstF90}[name=COMM_list_generate]
+  !-----------------------------------------------------------------------------
+  !> Generate inner grid -> halo communication list
+  subroutine COMM_list_generate
+    use mod_adm, only: &
+       ADM_prc_me,      &
+       ADM_lall,        &
+       ADM_gall,        &
+       ADM_gmax,        &
+       ADM_gmin,        &
+       RGNMNG_r2lp,     &
+       RGNMNG_l2r,      &
+       RGNMNG_edge_tab, &
+       RGNMNG_vert_num, &
+       RGNMNG_vert_tab, &
+       I_prc,           &
+       I_RGNID,         &
+       I_DIR,           &
+       I_SW,            &
+       I_NW,            &
+       I_NE,            &
+       I_SE,            &
+       I_W,             &
+       I_N,             &
+       I_E,             &
+       I_S
+    implicit none
+
+    integer :: ginnar
+
+    integer :: prc, prc_rmt
+    integer :: rgnid, rgnid_rmt
+    integer :: i, j, i_rmt, j_rmt
+
+    integer :: n, l, cnt
+    !---------------------------------------------------------------------------
+
+    ginnar = ADM_gmax - ADM_gmin + 1
+
+    allocate( rellist(rellist_vindex,ADM_gall*ADM_lall) )
+
+\end{LstF90}
+%
+This subroutine is private in module, there are no arguments, but using
+\src{use} to include from other module.
+%
+Variables with prefix \src{ADM_} define problem size, and variables with
+prefix \src{RGNMNG_} define tables to manage the relation between
+regions and processes.
+%
+Variables with prefix \src{I_} are the constant index and are used to
+specify the kind of quantity.
+%
+For example, \src{RGNMNG_r2lp(I_prc,rgnid)} means the process number
+that manage given region with \src{rgnid}
+
+
+
+The main part of this subroutine is a pretty long $l$-loop, that is
+consist of two sections.
+%
+The first section is as follows.
+
+\begin{LstF90}[name=COMM_list_generate,firstnumber=last]
+    cnt = 0
+    do l = 1, ADM_lall
+       rgnid = RGNMNG_l2r(l)
+       prc   = ADM_prc_me
+
+       !---< South West >---
+
+       ! NE -> SW halo
+       if ( RGNMNG_edge_tab(I_DIR,I_SW,rgnid) == I_NE ) then
+          rgnid_rmt = RGNMNG_edge_tab(I_RGNID,I_SW,rgnid)
+          prc_rmt   = RGNMNG_r2lp(I_prc,rgnid_rmt)
+
+          do n = 1, ginnar
+             cnt = cnt + 1
+
+             i     = ADM_gmin - 1 + n
+             j     = ADM_gmin - 1
+             i_rmt = ADM_gmin - 1 + n
+             j_rmt = ADM_gmax
+
+             rellist(I_recv_grid,cnt) = suf(i,j)
+             rellist(I_recv_rgn, cnt) = rgnid
+             rellist(I_recv_prc, cnt) = prc
+             rellist(I_send_grid,cnt) = suf(i_rmt,j_rmt)
+             rellist(I_send_rgn, cnt) = rgnid_rmt
+             rellist(I_send_prc, cnt) = prc_rmt
+          enddo
+       endif
+
+       ! SE -> SW halo (Southern Hemisphere, Edge of diamond)
+       if ( RGNMNG_edge_tab(I_DIR,I_SW,rgnid) == I_SE ) then
+          rgnid_rmt = RGNMNG_edge_tab(I_RGNID,I_SW,rgnid)
+          prc_rmt   = RGNMNG_r2lp(I_prc,rgnid_rmt)
+
+          do n = 1, ginnar
+             cnt = cnt + 1
+
+             i     = ADM_gmin - 1 + n
+             j     = ADM_gmin - 1
+             i_rmt = ADM_gmax
+             j_rmt = ADM_gmax + 1 - n ! reverse order
+
+             rellist(I_recv_grid,cnt) = suf(i,j)
+             rellist(I_recv_rgn, cnt) = rgnid
+             rellist(I_recv_prc, cnt) = prc
+             rellist(I_send_grid,cnt) = suf(i_rmt,j_rmt)
+             rellist(I_send_rgn, cnt) = rgnid_rmt
+             rellist(I_send_prc, cnt) = prc_rmt
+          enddo
+       endif
+
+       !---< North West >---
+
+       ! SE -> NW
+       if ( RGNMNG_edge_tab(I_DIR,I_NW,rgnid) == I_SE ) then
+          rgnid_rmt = RGNMNG_edge_tab(I_RGNID,I_NW,rgnid)
+          prc_rmt   = RGNMNG_r2lp(I_prc,rgnid_rmt)
+
+          do n = 1, ginnar
+             cnt = cnt + 1
+
+             i     = ADM_gmin - 1
+             j     = ADM_gmin - 1 + n
+             i_rmt = ADM_gmax
+             j_rmt = ADM_gmin - 1 + n
+
+             rellist(I_recv_grid,cnt) = suf(i,j)
+             rellist(I_recv_rgn, cnt) = rgnid
+             rellist(I_recv_prc, cnt) = prc
+             rellist(I_send_grid,cnt) = suf(i_rmt,j_rmt)
+             rellist(I_send_rgn, cnt) = rgnid_rmt
+             rellist(I_send_prc, cnt) = prc_rmt
+          enddo
+       endif
+
+       ! NE -> NW  (Northern Hemisphere, Edge of diamond)
+       if ( RGNMNG_edge_tab(I_DIR,I_NW,rgnid) == I_NE ) then
+          rgnid_rmt = RGNMNG_edge_tab(I_RGNID,I_NW,rgnid)
+          prc_rmt   = RGNMNG_r2lp(I_prc,rgnid_rmt)
+
+          do n = 1, ginnar
+             cnt = cnt + 1
+
+             i     = ADM_gmin - 1
+             j     = ADM_gmin - 1 + n
+             i_rmt = ADM_gmax + 1 - n ! reverse order
+             j_rmt = ADM_gmax
+
+             rellist(I_recv_grid,cnt) = suf(i,j)
+             rellist(I_recv_rgn, cnt) = rgnid
+             rellist(I_recv_prc, cnt) = prc
+             rellist(I_send_grid,cnt) = suf(i_rmt,j_rmt)
+             rellist(I_send_rgn, cnt) = rgnid_rmt
+             rellist(I_send_prc, cnt) = prc_rmt
+          enddo
+       endif
+
+       !---< North East >---
+
+       ! SW -> NE
+       if ( RGNMNG_edge_tab(I_DIR,I_NE,rgnid) == I_SW ) then
+          rgnid_rmt = RGNMNG_edge_tab(I_RGNID,I_NE,rgnid)
+          prc_rmt   = RGNMNG_r2lp(I_prc,rgnid_rmt)
+
+          do n = 1, ginnar
+             cnt = cnt + 1
+
+             i     = ADM_gmin - 1 + n
+             j     = ADM_gmax + 1
+             i_rmt = ADM_gmin - 1 + n
+             j_rmt = ADM_gmin
+
+             rellist(I_recv_grid,cnt) = suf(i,j)
+             rellist(I_recv_rgn, cnt) = rgnid
+             rellist(I_recv_prc, cnt) = prc
+             rellist(I_send_grid,cnt) = suf(i_rmt,j_rmt)
+             rellist(I_send_rgn, cnt) = rgnid_rmt
+             rellist(I_send_prc, cnt) = prc_rmt
+          enddo
+       endif
+
+       ! NW -> NE  (Northern Hemisphere, Edge of diamond)
+       if ( RGNMNG_edge_tab(I_DIR,I_NE,rgnid) == I_NW ) then
+          rgnid_rmt = RGNMNG_edge_tab(I_RGNID,I_NE,rgnid)
+          prc_rmt   = RGNMNG_r2lp(I_prc,rgnid_rmt)
+
+          do n = 1, ginnar
+             cnt = cnt + 1
+
+             i     = ADM_gmin     + n ! shift 1 grid
+             j     = ADM_gmax + 1
+             i_rmt = ADM_gmin
+             j_rmt = ADM_gmax + 1 - n ! reverse order
+
+             rellist(I_recv_grid,cnt) = suf(i,j)
+             rellist(I_recv_rgn, cnt) = rgnid
+             rellist(I_recv_prc, cnt) = prc
+             rellist(I_send_grid,cnt) = suf(i_rmt,j_rmt)
+             rellist(I_send_rgn, cnt) = rgnid_rmt
+             rellist(I_send_prc, cnt) = prc_rmt
+          enddo
+       endif
+
+       !---< South East >---
+
+       ! NW -> SE
+       if ( RGNMNG_edge_tab(I_DIR,I_SE,rgnid) == I_NW ) then
+          rgnid_rmt = RGNMNG_edge_tab(I_RGNID,I_SE,rgnid)
+          prc_rmt   = RGNMNG_r2lp(I_prc,rgnid_rmt)
+
+          do n = 1, ginnar
+             cnt = cnt + 1
+
+             i     = ADM_gmax + 1
+             j     = ADM_gmin - 1 + n
+             i_rmt = ADM_gmin
+             j_rmt = ADM_gmin - 1 + n
+
+             rellist(I_recv_grid,cnt) = suf(i,j)
+             rellist(I_recv_rgn, cnt) = rgnid
+             rellist(I_recv_prc, cnt) = prc
+             rellist(I_send_grid,cnt) = suf(i_rmt,j_rmt)
+             rellist(I_send_rgn, cnt) = rgnid_rmt
+             rellist(I_send_prc, cnt) = prc_rmt
+          enddo
+       endif
+
+       ! SW -> SE  (Southern Hemisphere, Edge of diamond)
+       if ( RGNMNG_edge_tab(I_DIR,I_SE,rgnid) == I_SW ) then
+          rgnid_rmt = RGNMNG_edge_tab(I_RGNID,I_SE,rgnid)
+          prc_rmt   = RGNMNG_r2lp(I_prc,rgnid_rmt)
+
+          do n = 1, ginnar
+             cnt = cnt + 1
+
+             i     = ADM_gmax + 1
+             j     = ADM_gmin     + n ! shift 1 grid
+             i_rmt = ADM_gmax + 1 - n ! reverse order
+             j_rmt = ADM_gmin
+
+             rellist(I_recv_grid,cnt) = suf(i,j)
+             rellist(I_recv_rgn, cnt) = rgnid
+             rellist(I_recv_prc, cnt) = prc
+             rellist(I_send_grid,cnt) = suf(i_rmt,j_rmt)
+             rellist(I_send_rgn, cnt) = rgnid_rmt
+             rellist(I_send_prc, cnt) = prc_rmt
+          enddo
+       endif
+
+\end{LstF90}
+%
+This section sets \src{rellist} at four edges of each region.
+%
+The first dimension of \src{rellist} has the size 6, they specify
+the pair of source and destination grid point.
+The data is transferred from source grid to destination grid in halo communication.
+%
+The second dimension is for the serial number of the grid.
+%
+That is, \src{rellist} manages 6 kind of quantities for each inner grid,
+first three are one-dimensioned grid index from $(i,j)$, region
+number and process number, respectively.
+The grid points identified by these three indices are the destination of data transfer.
+%
+The latter three are the same but of the informations of the source grid points.
+
+Remember that the shape of the region in \NICAM is a diamond,
+and setting of \src{rellist} is separated for each edge of a diamond.
+%
+For example, \src{( RGNMNG_edge_tab(I_DIR,I_SW,rgnid) == I_NE )}(l.49) means that
+whether the south-west edge of the region with \src{rgnid} is linked with the
+north-east edge of neighbouring region.
+%
+Therefore, this \src{IF}-clause sets \src{rellist} as that the halo
+grids of this region are linked with the corresponding inner grids of
+the region \src{rgnid_rmt} which is managed by the process
+\src{prc_rmt}.
+
+The continuing section is as follows.
+
+\begin{LstF90}[name=COMM_list_generate,firstnumber=last]
+       !---< Vertex : link to the next next region >---
+
+       ! West Vertex
+       if ( RGNMNG_vert_num(I_W,rgnid) == 4 ) then
+          rgnid_rmt = RGNMNG_vert_tab(I_RGNID,I_W,rgnid,3)
+          prc_rmt   = RGNMNG_r2lp(I_prc,rgnid_rmt)
+
+          cnt = cnt + 1
+
+          i = ADM_gmin - 1
+          j = ADM_gmin - 1
+
+          if ( RGNMNG_vert_tab(I_DIR,I_W,rgnid,3) == I_N ) then
+             i_rmt = ADM_gmin
+             j_rmt = ADM_gmax
+          elseif( RGNMNG_vert_tab(I_DIR,I_W,rgnid,3) == I_E ) then
+             i_rmt = ADM_gmax
+             j_rmt = ADM_gmax
+          elseif( RGNMNG_vert_tab(I_DIR,I_W,rgnid,3) == I_S ) then
+             i_rmt = ADM_gmax
+             j_rmt = ADM_gmin
+          endif
+
+          rellist(I_recv_grid,cnt) = suf(i,j)
+          rellist(I_recv_rgn, cnt) = rgnid
+          rellist(I_recv_prc, cnt) = prc
+          rellist(I_send_grid,cnt) = suf(i_rmt,j_rmt)
+          rellist(I_send_rgn, cnt) = rgnid_rmt
+          rellist(I_send_prc, cnt) = prc_rmt
+       endif
+
+       ! North Vertex
+       if ( RGNMNG_vert_num(I_N,rgnid) == 4 ) then
+          rgnid_rmt = RGNMNG_vert_tab(I_RGNID,I_N,rgnid,3)
+          prc_rmt   = RGNMNG_r2lp(I_prc,rgnid_rmt)
+
+          ! known as north pole point
+          if ( RGNMNG_vert_tab(I_DIR,I_N,rgnid,3) == I_W ) then
+             cnt = cnt + 1
+
+             i     = ADM_gmin
+             j     = ADM_gmax + 1
+             i_rmt = ADM_gmin
+             j_rmt = ADM_gmin
+
+             rellist(I_recv_grid,cnt) = suf(i,j)
+             rellist(I_recv_rgn, cnt) = rgnid
+             rellist(I_recv_prc, cnt) = prc
+             rellist(I_send_grid,cnt) = suf(i_rmt,j_rmt)
+             rellist(I_send_rgn, cnt) = rgnid_rmt
+             rellist(I_send_prc, cnt) = prc_rmt
+          endif
+
+          ! unused vertex point
+          cnt = cnt + 1
+
+          i = ADM_gmin - 1
+          j = ADM_gmax + 1
+
+          if ( RGNMNG_vert_tab(I_DIR,I_N,rgnid,3) == I_W ) then
+             i_rmt = ADM_gmin
+             j_rmt = ADM_gmin + 1
+          elseif( RGNMNG_vert_tab(I_DIR,I_N,rgnid,3) == I_N ) then
+             i_rmt = ADM_gmin
+             j_rmt = ADM_gmax
+          elseif( RGNMNG_vert_tab(I_DIR,I_N,rgnid,3) == I_E ) then
+             i_rmt = ADM_gmax
+             j_rmt = ADM_gmax
+          elseif( RGNMNG_vert_tab(I_DIR,I_N,rgnid,3) == I_S ) then
+             i_rmt = ADM_gmax
+             j_rmt = ADM_gmin
+          endif
+
+          rellist(I_recv_grid,cnt) = suf(i,j)
+          rellist(I_recv_rgn, cnt) = rgnid
+          rellist(I_recv_prc, cnt) = prc
+          rellist(I_send_grid,cnt) = suf(i_rmt,j_rmt)
+          rellist(I_send_rgn, cnt) = rgnid_rmt
+          rellist(I_send_prc, cnt) = prc_rmt
+       endif
+
+       ! East Vertex
+       if ( RGNMNG_vert_num(I_E,rgnid) == 4 ) then
+          if ( RGNMNG_vert_tab(I_DIR,I_E,rgnid,3) == I_W ) then
+             rgnid_rmt = RGNMNG_vert_tab(I_RGNID,I_E,rgnid,3)
+             prc_rmt   = RGNMNG_r2lp(I_prc,rgnid_rmt)
+
+             cnt = cnt + 1
+
+             i     = ADM_gmax + 1
+             j     = ADM_gmax + 1
+             i_rmt = ADM_gmin
+             j_rmt = ADM_gmin
+
+             rellist(I_recv_grid,cnt) = suf(i,j)
+             rellist(I_recv_rgn, cnt) = rgnid
+             rellist(I_recv_prc, cnt) = prc
+             rellist(I_send_grid,cnt) = suf(i_rmt,j_rmt)
+             rellist(I_send_rgn, cnt) = rgnid_rmt
+             rellist(I_send_prc, cnt) = prc_rmt
+          endif
+       endif
+
+       ! South Vertex
+       if ( RGNMNG_vert_num(I_S,rgnid) == 4 ) then
+          rgnid_rmt = RGNMNG_vert_tab(I_RGNID,I_S,rgnid,3)
+          prc_rmt   = RGNMNG_r2lp(I_prc,rgnid_rmt)
+
+          ! known as south pole point
+          if ( RGNMNG_vert_tab(I_DIR,I_S,rgnid,3) == I_W ) then
+             cnt = cnt + 1
+
+             i     = ADM_gmax + 1
+             j     = ADM_gmin
+             i_rmt = ADM_gmin
+             j_rmt = ADM_gmin
+
+             rellist(I_recv_grid,cnt) = suf(i,j)
+             rellist(I_recv_rgn, cnt) = rgnid
+             rellist(I_recv_prc, cnt) = prc
+             rellist(I_send_grid,cnt) = suf(i_rmt,j_rmt)
+             rellist(I_send_rgn, cnt) = rgnid_rmt
+             rellist(I_send_prc, cnt) = prc_rmt
+          endif
+
+          ! unused vertex point
+          cnt = cnt + 1
+
+          i = ADM_gmax + 1
+          j = ADM_gmin - 1
+
+          if ( RGNMNG_vert_tab(I_DIR,I_S,rgnid,3) == I_W ) then
+             i_rmt = ADM_gmin + 1
+             j_rmt = ADM_gmin
+          elseif( RGNMNG_vert_tab(I_DIR,I_S,rgnid,3) == I_N ) then
+             i_rmt = ADM_gmin
+             j_rmt = ADM_gmax
+          elseif( RGNMNG_vert_tab(I_DIR,I_S,rgnid,3) == I_E ) then
+             i_rmt = ADM_gmax
+             j_rmt = ADM_gmax
+          elseif( RGNMNG_vert_tab(I_DIR,I_S,rgnid,3) == I_S ) then
+             i_rmt = ADM_gmax
+             j_rmt = ADM_gmin
+          endif
+
+          rellist(I_recv_grid,cnt) = suf(i,j)
+          rellist(I_recv_rgn, cnt) = rgnid
+          rellist(I_recv_prc, cnt) = prc
+          rellist(I_send_grid,cnt) = suf(i_rmt,j_rmt)
+          rellist(I_send_rgn, cnt) = rgnid_rmt
+          rellist(I_send_prc, cnt) = prc_rmt
+       endif
+    enddo ! loop l
+
+    rellist_nmax = cnt
+
+    write(IO_FID_LOG,*)
+    write(IO_FID_LOG,*) "*** rellist_nmax:", rellist_nmax
+
+    if ( debug ) then
+       write(IO_FID_LOG,*) "--- Relation Table"
+       write(IO_FID_LOG,'(7(A10))') 'Count', '|recv_grid', '| recv_rgn', '| recv_prc', &
+                                                       '|send_grid', '| send_rgn', '| send_prc'
+       do cnt = 1, rellist_nmax
+          write(IO_FID_LOG,'(7(I10))') cnt, rellist(:,cnt)
+       enddo
+    endif
+
+    return
+  end subroutine COMM_list_generate
+\end{LstF90}
+%
+Similar to the previous secion, this section sets \src{rellist} additional source-destination relationships of each region.
+Around the vertices, the data can be transferred from next-next region.
+%
+In the \src{IF}-clause at l.233, \src{( RGNMNG_vert_num(I_W,rgnid) == 4 )} means whether the number of
+regions around the western vertex of the region with \src{rgnid} is four, i.e.
+this vertex is not a singular point, that has only three region links.
+%
+And \src{( RGNMNG_vert_tab(I_DIR,I_W,rgnid,3) == I_N )}(l.242) means whether
+the northern vertex of the next-next region is connected to the western vertex of current region.
+The regions around the vertex are searched clockwise.
+%
+Other two \src{IF}-clauses(l.245 and l.248) are the same meaning
+but for the east or west vertex of the next-next region.
+
+At the northern and southern vertices, there are the cases applying special treatment.
+If the region does not contain north pole at the halo,
+and the north-western edge is connected to the north-eastern edge of neighboring region,
+We should take one grid from the next-next region into account.
+%
+Additionally, in northern and southern vertex section, northern-most and southern-most vertex in each region
+is not used, respectively (See \autoref{f:grid_structure_of_a_region} in \autoref{s:horiz_data_structure}).
+These points are filled by the value of the grid in the self region.
+
+After the $l$-loop, contents of \src{rellist} is written to the log
+(standard output).
+%
+See \autoref{s:comm_input_result} for example.
+
+Also note that even if one region is managed by a single process, all
+process has the same \src{rellist} that contains the information of
+\emph{ALL} regions.
+
+
+\subsubsection{\src{COMM_sortdest}}
+
+Subroutine \src{COMM_sortdest} is to sort the region to region
+connection info.
+
+The first part is as follows.
+
+\begin{LstF90}[name=COMM_sortdest]
+!-----------------------------------------------------------------------------
+!> Sort data destination for region <-> region
+subroutine COMM_sortdest
+  use mod_process, only: &
+     PRC_LOCAL_COMM_WORLD, &
+     PRC_nprocs
+  use mod_adm, only: &
+     ADM_prc_me,     &
+     ADM_kall,       &
+     ADM_gall_1d,    &
+     RGNMNG_lp2r,    &
+     RGNMNG_r2lp,    &
+     I_l
+  implicit none
+
+  integer :: sendbuf1(1)
+  integer :: recvbuf1(1)
+
+  integer, allocatable :: sendbuf_info(:)
+  integer, allocatable :: recvbuf_info(:)
+  integer, allocatable :: sendbuf_list(:,:,:)
+  integer, allocatable :: recvbuf_list(:,:,:)
+  integer, allocatable :: REQ_list_r2r(:)
+
+  integer :: Recv_nglobal_r2r
+  integer :: Send_size_nglobal
+
+  integer :: cnt, irank, ipos
+  integer :: totalsize, rank, tag
+
+  integer :: i_from, j_from, r_from, g_from, l_from, p_from
+  integer :: i_to, j_to, r_to, g_to, l_to, p_to
+
+  integer :: ierr
+  integer :: n, p
+  !---------------------------------------------------------------------------
+
+  allocate( Copy_info_r2r(info_vindex) )
+  allocate( Recv_info_r2r(info_vindex,Recv_nlim) )
+  allocate( Send_info_r2r(info_vindex,Send_nlim) )
+  Copy_info_r2r(:)        = -1
+  Recv_info_r2r(:,:)      = -1
+  Send_info_r2r(:,:)      = -1
+  Copy_info_r2r(I_size)   = 0
+  Recv_info_r2r(I_size,:) = 0
+  Send_info_r2r(I_size,:) = 0
+
+  allocate( Copy_list_r2r(list_vindex,rellist_nmax) )
+  allocate( Recv_list_r2r(list_vindex,rellist_nmax,Recv_nlim) )
+  allocate( Send_list_r2r(list_vindex,rellist_nmax,Send_nlim) )
+  Copy_list_r2r(:,:)   = -1
+  Recv_list_r2r(:,:,:) = -1
+  Send_list_r2r(:,:,:) = -1
+
+\end{LstF90}
+%
+This subroutine is also private in this module, there are no arguments.
+%
+Variables with the prefix \src{sendbuf} and \src{recvbuf} are temporal
+containers used for MPI communication.
+%
+\src{Send_info_r2r} and \src{Recv_info_r2r} specify
+the number of transferring grids between two precesses, for the sending side and receiving side, respectively.
+\src{Copy_info_r2r} is the number of grids to copy within the same process.
+%
+\src{Copy_info_r2r} is one-dimensional and the size is \src{info_vindex}
+that is $3$, and the index takes one of \src{I_size}, \src{I_prc_from} or
+\src{I_prc_to}.
+\src{Copy_info_r2r(I_size)} is the number of halo-grid points that exchange with
+the grid points in other region by memory-copy, and \src{Copy_info_r2r(I_prc_from)} and
+\src{Copy_info_r2r(i_prc_to)} are the process number that the process
+this region exchange from/to, of course this value is the same with
+\src{ADM_prc_me}, the process this region is managed.
+
+On the other hand, \src{Recv_info_r2r} and \src{Send_info_r2r} are
+two-dimensional, the first dimension of them are the same with
+\src{Copy_info_r2r}.
+%
+The size of the second dimension of these are \src{Recv_nlim} and
+\src{Send_nlim}, respectively, they are both $10$, and this dimension
+specifies that which process this process receive from/send to.
+
+\src{Copy_list_r2r} is two-dimensional, the size of these dimension are
+\src{list_vindex}, which is $4$, and \src{rellist_nmax}, which is the
+number of grid points \src{rellist} contains.
+%
+First dimension takes one of \src{I_grid_from}, \src{I_l_from}
+\src{I_grid_to} or \src{I_l_to}, they specify
+the grid point and the (local) region number the value comes from,
+the grid point and the (local) region number the value goes to, respectively.
+%
+And second dimension specifies the grid point in this process whose value
+is exchanged by the memory-copy.
+
+\src{Recv_list_r2r} and \src{Send_list_r2r} are similar, but have
+another dimension, whose size are \src{Recv_nlim} and \src{Send_nlim},
+respectively.
+%
+This last dimension has the same meaning with the last dimension of
+\src{Recv_info_r2r} and \src{Send_info_r2r}.
+
+
+These arrays are set in the next section, as follows.
+\begin{LstF90}[name=COMM_sortdest,firstnumber=last]
+  ! sorting list according to destination
+  do cnt = 1, rellist_nmax
+
+     if ( rellist(I_recv_prc,cnt) == rellist(I_send_prc,cnt) ) then ! no communication
+        Copy_info_r2r(I_size) = Copy_info_r2r(I_size) + 1
+        ipos                  = Copy_info_r2r(I_size)
+
+        Copy_list_r2r(I_grid_from,ipos) = rellist(I_send_grid,cnt)
+        Copy_list_r2r(I_l_from   ,ipos) = RGNMNG_r2lp(I_l,rellist(I_send_rgn,cnt))
+        Copy_list_r2r(I_grid_to  ,ipos) = rellist(I_recv_grid,cnt)
+        Copy_list_r2r(I_l_to     ,ipos) = RGNMNG_r2lp(I_l,rellist(I_recv_rgn,cnt))
+     else ! node-to-node communication
+        !--- search existing rank id (identify by prc_from)
+        irank = -1
+        do n = 1, Recv_nmax_r2r
+           if ( Recv_info_r2r(I_prc_from,n) == rellist(I_send_prc,cnt) ) then
+              irank = n
+              exit
+           endif
+        enddo
+
+        if ( irank < 0 ) then ! register new rank id
+           Recv_nmax_r2r = Recv_nmax_r2r + 1
+           irank         = Recv_nmax_r2r
+
+           Recv_info_r2r(I_prc_from,irank) = rellist(I_send_prc,cnt)
+           Recv_info_r2r(I_prc_to  ,irank) = rellist(I_recv_prc,cnt)
+        endif
+
+        Recv_info_r2r(I_size,irank) = Recv_info_r2r(I_size,irank) + 1
+        ipos                        = Recv_info_r2r(I_size,irank)
+
+        Recv_list_r2r(I_grid_from,ipos,irank) = rellist(I_send_grid,cnt)
+        Recv_list_r2r(I_l_from   ,ipos,irank) = RGNMNG_r2lp(I_l,rellist(I_send_rgn,cnt))
+        Recv_list_r2r(I_grid_to  ,ipos,irank) = rellist(I_recv_grid,cnt)
+        Recv_list_r2r(I_l_to     ,ipos,irank) = RGNMNG_r2lp(I_l,rellist(I_recv_rgn,cnt))
+     endif
+  enddo
+
+  if ( Copy_info_r2r(I_size) > 0 ) then
+     Copy_nmax_r2r = 1
+     Copy_info_r2r(I_prc_from) = ADM_prc_me
+     Copy_info_r2r(I_prc_to  ) = ADM_prc_me
+  endif
+
+
+
+\end{LstF90}
+
+
+In the next section there are some MPI communication, as follows.
+
+\begin{LstF90}[name=COMM_sortdest,firstnumber=last]
+  ! get maximum number of rank to communication
+  sendbuf1(1) = Recv_nmax_r2r
+
+  call MPI_Allreduce( sendbuf1(1),          & ! [IN]
+                      recvbuf1(1),          & ! [OUT]
+                      1,                    & ! [IN]
+                      MPI_INTEGER,          & ! [IN]
+                      MPI_MAX,              & ! [IN]
+                      PRC_LOCAL_COMM_WORLD, & ! [IN]
+                      ierr                  ) ! [OUT]
+
+  Recv_nglobal_r2r = recvbuf1(1)
+
+  ! Distribute receive request from each rank to all
+  allocate( sendbuf_info(info_vindex*Recv_nglobal_r2r) )
+  allocate( recvbuf_info(info_vindex*Recv_nglobal_r2r*PRC_nprocs) )
+  sendbuf_info(:) = -1
+
+  do irank = 1, Recv_nmax_r2r
+     n = (irank-1) * info_vindex
+
+     sendbuf_info(n+I_size    ) = Recv_info_r2r(I_size    ,irank)
+     sendbuf_info(n+I_prc_from) = Recv_info_r2r(I_prc_from,irank)
+     sendbuf_info(n+I_prc_to  ) = Recv_info_r2r(I_prc_to  ,irank)
+  enddo
+
+  totalsize = info_vindex * Recv_nglobal_r2r
+
+  call MPI_Allgather( sendbuf_info(1),      & ! [IN]
+                      totalsize,            & ! [IN]
+                      MPI_INTEGER,          & ! [IN]
+                      recvbuf_info(1),      & ! [OUT]
+                      totalsize,            & ! [IN]
+                      MPI_INTEGER,          & ! [IN]
+                      PRC_LOCAL_COMM_WORLD, & ! [IN]
+                      ierr                  ) ! [OUT]
+
+  Send_size_nglobal = 0
+
+  ! Accept receive request to my rank
+  do p  = 1, Recv_nglobal_r2r*PRC_nprocs
+     n = (p-1) * info_vindex
+
+     if ( recvbuf_info(n+I_prc_from) == ADM_prc_me ) then
+        Send_nmax_r2r = Send_nmax_r2r + 1
+        irank         = Send_nmax_r2r
+
+        Send_info_r2r(I_size    ,irank) = recvbuf_info(n+I_size    )
+        Send_info_r2r(I_prc_from,irank) = recvbuf_info(n+I_prc_from)
+        Send_info_r2r(I_prc_to  ,irank) = recvbuf_info(n+I_prc_to  )
+     endif
+
+     Send_size_nglobal = max( Send_size_nglobal, recvbuf_info(n+I_size) )
+  enddo
+
+  write(IO_FID_LOG,*)
+  write(IO_FID_LOG,*) '*** Recv_nmax_r2r(global) = ', Recv_nglobal_r2r
+  write(IO_FID_LOG,*) '*** Recv_nmax_r2r(local)  = ', Recv_nmax_r2r
+  write(IO_FID_LOG,*) '*** Send_nmax_r2r(local)  = ', Send_nmax_r2r
+  write(IO_FID_LOG,*) '*** Send_size_r2r(global) = ', Send_size_nglobal
+  write(IO_FID_LOG,*)
+  write(IO_FID_LOG,'(A)')             "|---------------------------------------"
+  write(IO_FID_LOG,'(A)')             "|               size  prc_from    prc_to"
+  write(IO_FID_LOG,'(A10,3(I10))')    "| Copy_r2r", Copy_info_r2r(:)
+  do irank = 1, Recv_nmax_r2r
+     write(IO_FID_LOG,'(A10,3(I10))') "| Recv_r2r", Recv_info_r2r(:,irank)
+  enddo
+  do irank = 1, Send_nmax_r2r
+     write(IO_FID_LOG,'(A10,3(I10))') "| Send_r2r", Send_info_r2r(:,irank)
+  enddo
+
+\end{LstF90}
+%
+In this section, shown as several write statements,
+\src{Recv_nglobal_r2r}, \src{Recv_nmax_r2r}, \src{Send_nmax_r2r} and
+\src{Send_size_nglobal} are calculated.
+%
+\src{Recv_nglobal_r2r} is the maximum of \src{Recv_nmax_r2r} in all
+processes, number of processes to communicate.
+%
+This value is calculated by \src{MPI_Allreduce} with \src{MPI_MAX}
+operation.
+%
+Then contents of \src{Recv_info_r2r} are \src{MPI_Allgather}ed and the
+contents of \src{Recv_info_r2r} which related to the current process are
+additionally stored to the \src{Send_info_r2r}.
+
+
+The next section is as follows.
+
+\begin{LstF90}[name=COMM_sortdest,firstnumber=last]
+  ! Communicate detailed information in each pair
+  allocate( REQ_list_r2r(Recv_nmax_r2r+Send_nmax_r2r)  )
+
+  allocate( sendbuf_list(list_vindex,Send_size_nglobal,Recv_nmax_r2r) )
+  allocate( recvbuf_list(list_vindex,Send_size_nglobal,Send_nmax_r2r) )
+  sendbuf_list(:,:,:) = -1
+
+  REQ_count = 0
+
+  do irank = 1, Send_nmax_r2r
+     REQ_count = REQ_count + 1
+     totalsize = Send_info_r2r(I_size,irank) * list_vindex
+     rank      = Send_info_r2r(I_prc_to  ,irank) - 1 ! rank = prc - 1
+     tag       = Send_info_r2r(I_prc_from,irank) - 1 ! rank = prc - 1
+
+     call MPI_IRECV( recvbuf_list(1,1,irank), & ! [OUT]
+                     totalsize,               & ! [IN]
+                     MPI_INTEGER,             & ! [IN]
+                     rank,                    & ! [IN]
+                     tag,                     & ! [IN]
+                     PRC_LOCAL_COMM_WORLD,    & ! [IN]
+                     REQ_list_r2r(REQ_count), & ! [OUT]
+                     ierr                     ) ! [OUT]
+  enddo
+
+  do irank = 1, Recv_nmax_r2r
+     do ipos = 1, Recv_info_r2r(I_size,irank)
+        sendbuf_list(:,ipos,irank) = Recv_list_r2r(:,ipos,irank)
+     enddo
+
+     REQ_count = REQ_count + 1
+     totalsize = Recv_info_r2r(I_size,irank) * list_vindex
+     rank      = Recv_info_r2r(I_prc_from,irank) - 1 ! rank = prc - 1
+     tag       = Recv_info_r2r(I_prc_from,irank) - 1 ! rank = prc - 1
+
+     call MPI_ISEND( sendbuf_list(1,1,irank), & ! [IN]
+                     totalsize,               & ! [IN]
+                     MPI_INTEGER,             & ! [IN]
+                     rank,                    & ! [IN]
+                     tag,                     & ! [IN]
+                     PRC_LOCAL_COMM_WORLD,    & ! [IN]
+                     REQ_list_r2r(REQ_count), & ! [OUT]
+                     ierr                     ) ! [OUT]
+  enddo
+
+  !--- wait packets
+  call MPI_WAITALL( Recv_nmax_r2r+Send_nmax_r2r, & ! [IN]
+                    REQ_list_r2r(:),             & ! [IN]
+                    MPI_STATUSES_IGNORE,         & ! [OUT]
+                    ierr                         ) ! [OUT]
+
+  do irank = 1, Send_nmax_r2r
+     do ipos = 1, Send_info_r2r(I_size,irank)
+        Send_list_r2r(:,ipos,irank) = recvbuf_list(:,ipos,irank)
+     enddo
+  enddo
+
+\end{LstF90}
+
+In this section each process send the contents of \src{Recv_info_r2r} to
+the corresponding process, then receive and store them to the
+corresponding location of \src{Send_info_r2r} and \src{Send_list_r2r}.
+%
+Note that this procedure is a kind of all to all communication,
+implemented asynchronous communication, \src{MPI_IRECV}, \src{MPI_ISEND}
+and \src{MPI_WAITALL}.
+
+Final section of this subroutine is as follows.
+
+\begin{LstF90}[name=COMM_sortdest,firstnumber=last]
+  if ( debug ) then
+     write(IO_FID_LOG,*)
+     write(IO_FID_LOG,*) "--- Copy_list_r2r"
+     write(IO_FID_LOG,*)
+     write(IO_FID_LOG,'(13(A6))') "number", &
+                                             "|ifrom","|jfrom","|rfrom","|gfrom","|lfrom","|pfrom", &
+                                             "|  ito","|  jto","|  rto","|  gto","|  lto","|  pto"
+     do ipos = 1, Copy_info_r2r(I_size)
+        g_from = Copy_list_r2r(I_grid_from,ipos)
+        l_from = Copy_list_r2r(I_l_from,ipos)
+        p_from = Copy_info_r2r(I_prc_from)
+        i_from = mod(g_from-1,ADM_gall_1d) + 1
+        j_from = (g_from-i_from) / ADM_gall_1d + 1
+        r_from = RGNMNG_lp2r(l_from,p_from)
+        g_to   = Copy_list_r2r(I_grid_to,ipos)
+        l_to   = Copy_list_r2r(I_l_to,ipos)
+        p_to   = Copy_info_r2r(I_prc_to)
+        i_to   = mod(g_to-1,ADM_gall_1d) + 1
+        j_to   = (g_to-i_to) / ADM_gall_1d + 1
+        r_to   = RGNMNG_lp2r(l_to,p_to)
+
+        write(IO_FID_LOG,'(13(I6))') ipos, i_from, j_from, r_from, g_from, l_from, p_from, &
+                                           i_to  , j_to  , r_to  , g_to  , l_to  , p_to
+     enddo
+
+     write(IO_FID_LOG,*)
+     write(IO_FID_LOG,*) "--- Recv_list_r2r"
+     do irank = 1, Recv_nmax_r2r
+        write(IO_FID_LOG,'(13(A6))') "number", &
+                                                "|ifrom","|jfrom","|rfrom","|gfrom","|lfrom","|pfrom", &
+                                                "|  ito","|  jto","|  rto","|  gto","|  lto","|  pto"
+        do ipos = 1, Recv_info_r2r(I_size,irank)
+           g_from = Recv_list_r2r(I_grid_from,ipos,irank)
+           l_from = Recv_list_r2r(I_l_from,ipos,irank)
+           p_from = Recv_info_r2r(I_prc_from,irank)
+           i_from = mod(g_from-1,ADM_gall_1d) + 1
+           j_from = (g_from-i_from) / ADM_gall_1d + 1
+           r_from = RGNMNG_lp2r(l_from,p_from)
+           g_to   = Recv_list_r2r(I_grid_to,ipos,irank)
+           l_to   = Recv_list_r2r(I_l_to,ipos,irank)
+           p_to   = Recv_info_r2r(I_prc_to,irank)
+           i_to   = mod(g_to-1,ADM_gall_1d) + 1
+           j_to   = (g_to-i_to) / ADM_gall_1d + 1
+           r_to   = RGNMNG_lp2r(l_to,p_to)
+
+           write(IO_FID_LOG,'(13(I6))') ipos, i_from, j_from, r_from, g_from, l_from, p_from, &
+                                              i_to  , j_to  , r_to  , g_to  , l_to  , p_to
+        enddo
+     enddo
+
+     write(IO_FID_LOG,*)
+     write(IO_FID_LOG,*) "--- Send_list_r2r"
+     do irank = 1, Send_nmax_r2r
+        write(IO_FID_LOG,'(13(A6))') "number", &
+                                                "|ifrom","|jfrom","|rfrom","|gfrom","|lfrom","|pfrom", &
+                                                "|  ito","|  jto","|  rto","|  gto","|  lto","|  pto"
+        do ipos = 1, Send_info_r2r(I_size,irank)
+           g_from = Send_list_r2r(I_grid_from,ipos,irank)
+           l_from = Send_list_r2r(I_l_from,ipos,irank)
+           p_from = Send_info_r2r(I_prc_from,irank)
+           i_from = mod(g_from-1,ADM_gall_1d) + 1
+           j_from = (g_from-i_from) / ADM_gall_1d + 1
+           r_from = RGNMNG_lp2r(l_from,p_from)
+           g_to   = Send_list_r2r(I_grid_to,ipos,irank)
+           l_to   = Send_list_r2r(I_l_to,ipos,irank)
+           p_to   = Send_info_r2r(I_prc_to,irank)
+           i_to   = mod(g_to-1,ADM_gall_1d) + 1
+           j_to   = (g_to-i_to) / ADM_gall_1d + 1
+           r_to   = RGNMNG_lp2r(l_to,p_to)
+
+           write(IO_FID_LOG,'(13(I6))') ipos, i_from, j_from, r_from, g_from, l_from, p_from, &
+                                              i_to  , j_to  , r_to  , g_to  , l_to  , p_to
+        enddo
+     enddo
+  endif
+
+  allocate( sendbuf_r2r(Send_size_nglobal*ADM_kall*COMM_varmax,Send_nmax_r2r) )
+  allocate( recvbuf_r2r(Send_size_nglobal*ADM_kall*COMM_varmax,Recv_nmax_r2r) )
+
+  return
+end subroutine COMM_sortdest
+\end{LstF90}
+%
+This section writes the contents of \src{Copy_list_r2r},
+\src{Recv_list_r2r}, \src{Send_list_r2r}, in the form of table,
+respectively.
+%
+Note that \src{debug} is true in this kernel program.
+%
+See \autoref{s:comm_input_result} for the example of this output.
+
+Regarding to subroutine \src{COMM_sortdest_pl} and
+\src{COMM_sortdest_singular}, they do similar procedure with
+\src{COMM_sortdest},
+omit here.
+
+
+
+\subsubsection{\src{COMM_debugtest}}
+
+\src{COMM_debugtest} is to test actual halo-exchange communication
+routine, \src{COMM_data_transfer} and \src{COMM_var}.
+
+The first section is as follows.
+
+\begin{LstF90}[name=COMM_debugtest]
+subroutine COMM_debugtest
+  use mod_process, only: &
+     PRC_MPIfinish
+  use mod_adm, only: &
+     ADM_prc_me,      &
+     ADM_gall,        &
+     ADM_gall_pl,     &
+     ADM_kall,        &
+     ADM_lall,        &
+     ADM_lall_pl,     &
+     ADM_lall_pl,     &
+     ADM_gall_1d,     &
+     ADM_gmin,        &
+     ADM_gmax,        &
+     ADM_kmin,        &
+     ADM_kmax,        &
+     ADM_vlink,       &
+     ADM_have_sgp,    &
+     RGNMNG_l2r,      &
+     RGNMNG_vert_num, &
+     I_N,             &
+     I_S
+  implicit none
+
+  real(RP) :: var   (ADM_gall   ,ADM_kall,ADM_lall   ,4)
+  real(RP) :: var_pl(ADM_gall_pl,ADM_kall,ADM_lall_pl,4)
+
+  integer  :: i, j, k, l, ij, rgnid, prc
+  !---------------------------------------------------------------------------
+
+\end{LstF90}
+%
+As the other subroutines in this section, this is also private in this
+module, and there are no arguments.
+%
+\src{var} and \src{var_pl} are temporal array used in communication.
+
+Main part are separated by two section. The fist section is as follows.
+
+\begin{LstF90}[name=COMM_debugtest,firstnumber=last]
+  write(IO_FID_LOG,*)
+  write(IO_FID_LOG,*) '+++ TEST start'
+
+  var   (:,:,:,:) = -999.D0
+  var_pl(:,:,:,:) = -999.D0
+
+  do l = 1, ADM_lall
+     rgnid = RGNMNG_l2r(l)
+     prc   = ADM_prc_me
+
+     do k = ADM_kmin, ADM_kmax
+        do j = ADM_gmin, ADM_gmax
+        do i = ADM_gmin, ADM_gmax
+           ij = ADM_gall_1d * (j-1) + i
+
+           var(ij,k,l,1) = real(prc,  kind=RP)
+           var(ij,k,l,2) = real(rgnid,kind=RP)
+           var(ij,k,l,3) = real(i,    kind=RP)
+           var(ij,k,l,4) = real(j,    kind=RP)
+        enddo
+        enddo
+     enddo
+
+     if ( ADM_have_sgp(l) ) then
+        do k = ADM_kmin, ADM_kmax
+           var(1,k,l,:) = -1.D0
+        enddo
+     endif
+  enddo
+
+  do l = 1, ADM_lall_pl
+     rgnid = l
+     prc   = ADM_prc_me
+
+     do k  = ADM_kmin, ADM_kmax
+     do ij = 1, ADM_gall_pl
+        var_pl(ij,k,l,1) = real(-prc,  kind=RP)
+        var_pl(ij,k,l,2) = real(-rgnid,kind=RP)
+        var_pl(ij,k,l,3) = real(-ij,   kind=RP)
+        var_pl(ij,k,l,4) = real(-ij,   kind=RP)
+     enddo
+     enddo
+  enddo
+
+  write(IO_FID_LOG,*) "##### (prc,rgnid) #####"
+  do l  = 1, ADM_lall
+  do k = ADM_kmin, ADM_kmin
+     write(IO_FID_LOG,*)
+     write(IO_FID_LOG,'(A9)',advance='no') "        |"
+     do i = 1, ADM_gall_1d
+        write(IO_FID_LOG,'(I9)',advance='no') i
+     enddo
+     write(IO_FID_LOG,*)
+
+     do j = ADM_gall_1d, 1, -1
+        write(IO_FID_LOG,'(I8,A1)',advance='no') j, "|"
+        do i = 1, ADM_gall_1d
+           ij = ADM_gall_1d * (j-1) + i
+           write(IO_FID_LOG,'(A1,I3,A1,I3,A1)',advance='no') &
+                      '(',int(var(ij,k,l,1)),',',int(var(ij,k,l,2)),')'
+        enddo
+        write(IO_FID_LOG,*)
+     enddo
+  enddo
+  enddo
+
+  do l  = 1, ADM_lall_pl
+  do k = ADM_kmin, ADM_kmin
+     write(IO_FID_LOG,*)
+     write(IO_FID_LOG,'(A9)',advance='no') "        |"
+     do i = 1, ADM_gall_pl
+        write(IO_FID_LOG,'(I9)',advance='no') i
+     enddo
+     write(IO_FID_LOG,*)
+
+     write(IO_FID_LOG,'(I8,A1)',advance='no') j, "|"
+     do ij = 1, ADM_gall_pl
+        write(IO_FID_LOG,'(A1,I3,A1,I3,A1)',advance='no') &
+                   '(',int(var_pl(ij,k,l,1)),',',int(var_pl(ij,k,l,2)),')'
+     enddo
+     write(IO_FID_LOG,*)
+  enddo
+  enddo
+
+  write(IO_FID_LOG,*) "##### (i,j) #####"
+  do l  = 1, ADM_lall
+  do k = ADM_kmin, ADM_kmin
+     write(IO_FID_LOG,*)
+     write(IO_FID_LOG,'(A9)',advance='no') "        |"
+     do i = 1, ADM_gall_1d
+        write(IO_FID_LOG,'(I9)',advance='no') i
+     enddo
+     write(IO_FID_LOG,*)
+
+     do j = ADM_gall_1d, 1, -1
+        write(IO_FID_LOG,'(I8,A1)',advance='no') j, "|"
+        do i = 1, ADM_gall_1d
+           ij = ADM_gall_1d * (j-1) + i
+           write(IO_FID_LOG,'(A1,I3,A1,I3,A1)',advance='no') &
+                      '(',int(var(ij,k,l,3)),',',int(var(ij,k,l,4)),')'
+        enddo
+        write(IO_FID_LOG,*)
+     enddo
+  enddo
+  enddo
+
+  do l  = 1, ADM_lall_pl
+  do k = ADM_kmin, ADM_kmin
+     write(IO_FID_LOG,*)
+     write(IO_FID_LOG,'(A9)',advance='no') "        |"
+     do i = 1, ADM_gall_pl
+        write(IO_FID_LOG,'(I9)',advance='no') i
+     enddo
+     write(IO_FID_LOG,*)
+
+     write(IO_FID_LOG,'(I8,A1)',advance='no') j, "|"
+     do ij = 1, ADM_gall_pl
+        write(IO_FID_LOG,'(A1,I3,A1,I3,A1)',advance='no') &
+                   '(',int(var_pl(ij,k,l,3)),',',int(var_pl(ij,k,l,4)),')'
+     enddo
+     write(IO_FID_LOG,*)
+  enddo
+  enddo
+
+
+
+  write(IO_FID_LOG,*)
+  write(IO_FID_LOG,*) '+++ Communication start'
+
+  call COMM_data_transfer( var(:,:,:,:), var_pl(:,:,:,:) )
+
+  write(IO_FID_LOG,*) "##### (prc,rgnid) #####"
+  do l  = 1, ADM_lall
+  do k = ADM_kmin, ADM_kmin
+     write(IO_FID_LOG,*)
+     write(IO_FID_LOG,'(A9)',advance='no') "        |"
+     do i = 1, ADM_gall_1d
+        write(IO_FID_LOG,'(I9)',advance='no') i
+     enddo
+     write(IO_FID_LOG,*)
+
+     do j = ADM_gall_1d, 1, -1
+        write(IO_FID_LOG,'(I8,A1)',advance='no') j, "|"
+        do i = 1, ADM_gall_1d
+           ij = ADM_gall_1d * (j-1) + i
+           write(IO_FID_LOG,'(A1,I3,A1,I3,A1)',advance='no') &
+                      '(',int(var(ij,k,l,1)),',',int(var(ij,k,l,2)),')'
+        enddo
+        write(IO_FID_LOG,*)
+     enddo
+  enddo
+  enddo
+
+  do l  = 1, ADM_lall_pl
+  do k = ADM_kmin, ADM_kmin
+     write(IO_FID_LOG,*)
+     write(IO_FID_LOG,'(A9)',advance='no') "        |"
+     do i = 1, ADM_gall_pl
+        write(IO_FID_LOG,'(I9)',advance='no') i
+     enddo
+     write(IO_FID_LOG,*)
+
+     write(IO_FID_LOG,'(I8,A1)',advance='no') j, "|"
+     do ij = 1, ADM_gall_pl
+        write(IO_FID_LOG,'(A1,I3,A1,I3,A1)',advance='no') &
+                   '(',int(var_pl(ij,k,l,1)),',',int(var_pl(ij,k,l,2)),')'
+     enddo
+     write(IO_FID_LOG,*)
+  enddo
+  enddo
+
+  write(IO_FID_LOG,*) "##### (i,j) #####"
+  do l  = 1, ADM_lall
+  do k = ADM_kmin, ADM_kmin
+     write(IO_FID_LOG,*)
+     write(IO_FID_LOG,'(A9)',advance='no') "        |"
+     do i = 1, ADM_gall_1d
+        write(IO_FID_LOG,'(I9)',advance='no') i
+     enddo
+     write(IO_FID_LOG,*)
+
+     do j = ADM_gall_1d, 1, -1
+        write(IO_FID_LOG,'(I8,A1)',advance='no') j, "|"
+        do i = 1, ADM_gall_1d
+           ij = ADM_gall_1d * (j-1) + i
+           write(IO_FID_LOG,'(A1,I3,A1,I3,A1)',advance='no') &
+                      '(',int(var(ij,k,l,3)),',',int(var(ij,k,l,4)),')'
+        enddo
+        write(IO_FID_LOG,*)
+     enddo
+  enddo
+  enddo
+
+  do l  = 1, ADM_lall_pl
+  do k = ADM_kmin, ADM_kmin
+     write(IO_FID_LOG,*)
+     write(IO_FID_LOG,'(A9)',advance='no') "        |"
+     do i = 1, ADM_gall_pl
+        write(IO_FID_LOG,'(I9)',advance='no') i
+     enddo
+     write(IO_FID_LOG,*)
+
+     write(IO_FID_LOG,'(I8,A1)',advance='no') j, "|"
+     do ij = 1, ADM_gall_pl
+        write(IO_FID_LOG,'(A1,I3,A1,I3,A1)',advance='no') &
+                   '(',int(var_pl(ij,k,l,3)),',',int(var_pl(ij,k,l,4)),')'
+     enddo
+     write(IO_FID_LOG,*)
+  enddo
+  enddo
+
+
+
+\end{LstF90}
+%
+This section does the test of \src{COMM_data_transfer}.
+%
+As test data, process number \src{prc}, region number \src{rgnid},
+and the grid index \src{i}, \src{j} are set to \src{var} and
+\src{var_pl}.
+%
+The values of these arrays of before and after the calling
+\src{COMM_data_transfer} are written to the log (standard out).
+
+The latter section is as follows.
+
+\begin{LstF90}[name=COMM_debugtest,firstnumber=last]
+  do l = 1, ADM_lall
+     rgnid = RGNMNG_l2r(l)
+     prc   = ADM_prc_me
+
+     if ( RGNMNG_vert_num(I_N,rgnid) == ADM_vlink ) then
+        do k = ADM_kmin, ADM_kmax
+           j  = ADM_gmax+1
+           i  = ADM_gmin
+           ij = ADM_gall_1d * (j-1) + i
+
+           var(ij,k,l,1) = real(prc,  kind=RP)
+           var(ij,k,l,2) = real(rgnid,kind=RP)
+           var(ij,k,l,3) = real(i,    kind=RP)
+           var(ij,k,l,4) = real(j,    kind=RP)
+        enddo
+     endif
+
+     if ( RGNMNG_vert_num(I_S,rgnid) == ADM_vlink ) then
+        do k = ADM_kmin, ADM_kmax
+           j  = ADM_gmin
+           i  = ADM_gmax+1
+           ij = ADM_gall_1d * (j-1) + i
+
+           var(ij,k,l,1) = real(prc,  kind=RP)
+           var(ij,k,l,2) = real(rgnid,kind=RP)
+           var(ij,k,l,3) = real(i,    kind=RP)
+           var(ij,k,l,4) = real(j,    kind=RP)
+        enddo
+     endif
+
+  enddo
+
+  write(IO_FID_LOG,*)
+  write(IO_FID_LOG,*) '+++ pole fill start'
+
+  call COMM_var( var(:,:,:,:), var_pl(:,:,:,:), ADM_kall, 4 )
+
+  write(IO_FID_LOG,*) "##### (prc,rgnid) #####"
+  do l  = 1, ADM_lall
+  do k = ADM_kmin, ADM_kmin
+     write(IO_FID_LOG,*)
+     write(IO_FID_LOG,'(A9)',advance='no') "        |"
+     do i = 1, ADM_gall_1d
+        write(IO_FID_LOG,'(I9)',advance='no') i
+     enddo
+     write(IO_FID_LOG,*)
+
+     do j = ADM_gall_1d, 1, -1
+        write(IO_FID_LOG,'(I8,A1)',advance='no') j, "|"
+        do i = 1, ADM_gall_1d
+           ij = ADM_gall_1d * (j-1) + i
+           write(IO_FID_LOG,'(A1,I3,A1,I3,A1)',advance='no') &
+                      '(',int(var(ij,k,l,1)),',',int(var(ij,k,l,2)),')'
+        enddo
+        write(IO_FID_LOG,*)
+     enddo
+  enddo
+  enddo
+
+  do l  = 1, ADM_lall_pl
+  do k = ADM_kmin, ADM_kmin
+     write(IO_FID_LOG,*)
+     write(IO_FID_LOG,'(A9)',advance='no') "        |"
+     do i = 1, ADM_gall_pl
+        write(IO_FID_LOG,'(I9)',advance='no') i
+     enddo
+     write(IO_FID_LOG,*)
+
+     write(IO_FID_LOG,'(I8,A1)',advance='no') j, "|"
+     do ij = 1, ADM_gall_pl
+        write(IO_FID_LOG,'(A1,I3,A1,I3,A1)',advance='no') &
+                   '(',int(var_pl(ij,k,l,1)),',',int(var_pl(ij,k,l,2)),')'
+     enddo
+     write(IO_FID_LOG,*)
+  enddo
+  enddo
+
+  write(IO_FID_LOG,*) "##### (i,j) #####"
+  do l  = 1, ADM_lall
+  do k = ADM_kmin, ADM_kmin
+     write(IO_FID_LOG,*)
+     write(IO_FID_LOG,'(A9)',advance='no') "        |"
+     do i = 1, ADM_gall_1d
+        write(IO_FID_LOG,'(I9)',advance='no') i
+     enddo
+     write(IO_FID_LOG,*)
+
+     do j = ADM_gall_1d, 1, -1
+        write(IO_FID_LOG,'(I8,A1)',advance='no') j, "|"
+        do i = 1, ADM_gall_1d
+           ij = ADM_gall_1d * (j-1) + i
+           write(IO_FID_LOG,'(A1,I3,A1,I3,A1)',advance='no') &
+                      '(',int(var(ij,k,l,3)),',',int(var(ij,k,l,4)),')'
+        enddo
+        write(IO_FID_LOG,*)
+     enddo
+  enddo
+  enddo
+
+  do l  = 1, ADM_lall_pl
+  do k = ADM_kmin, ADM_kmin
+     write(IO_FID_LOG,*)
+     write(IO_FID_LOG,'(A9)',advance='no') "        |"
+     do i = 1, ADM_gall_pl
+        write(IO_FID_LOG,'(I9)',advance='no') i
+     enddo
+     write(IO_FID_LOG,*)
+
+     write(IO_FID_LOG,'(I8,A1)',advance='no') j, "|"
+     do ij = 1, ADM_gall_pl
+        write(IO_FID_LOG,'(A1,I3,A1,I3,A1)',advance='no') &
+                   '(',int(var_pl(ij,k,l,3)),',',int(var_pl(ij,k,l,4)),')'
+     enddo
+     write(IO_FID_LOG,*)
+  enddo
+  enddo
+
+  return
+end subroutine COMM_debugtest
+\end{LstF90}
+%
+This section does the test of \src{COMM_var}.
+%
+The procedure is the same with the case of \src{COMM_data_transfer},
+using \src{prc}, \src{rgnid}, \src{i} and \src{j} as a test data,
+writes out these values the before and after calling this subroutine.
+
+See \autoref{s:comm_input_result} for example.
+
+
+
+
+\subsection{Input data and result}\label{s:comm_input_result}
+
+This kernel program doesn't need any input data, except configuring
+namelist file \file{communication.cnf}.
+
+Several configuration is prepared in \file{data} directory.
+%
+The default one is as follows.
+
+\begin{LstLog}
+################################################################################
+
+&ADMPARAM
+    glevel = 4,
+    rlevel = 0,
+    vlayer = 20,
+    debug  = .true.,
+/
+
+&COMMPARAM
+    debug    = .true.,
+    testonly = .true.,
+/
+
+################################################################################
+\end{LstLog}
+
+Script files in \file{run} directory executes this kernel program with
+two MPI processes.
+Each process outputs logfile named \file{msg.pe000000} and
+\file{msg.pe000001}.
+
+These files are so long and skip here.
+%
+There are example output files in \file{reference} directory.
+%
+These outputs must be the same except white space changes.
+
+
+\subsection{Sample of perfomance result}
+
+Here's an example of the performance result part of the log output.
+Below is an example executed with the machine environment described in \autoref{s:measuring_env}.
+%
+Note that in this program kernel part is iterated one time.
+
+\begin{LstLog}
+ *** Computational Time Report
+ *** Rap level is            2
+ *** ID=001 : MAIN_Kernel_ALL                  T=     0.020 N=        1
+ *** ID=002 : MAIN_COMM_data_transfer          T=     0.001 N=        2
+ *** ID=003 : MAIN_COMM_var                    T=     0.000 N=        1
+\end{LstLog}
