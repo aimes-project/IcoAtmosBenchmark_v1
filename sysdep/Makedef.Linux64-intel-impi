@@ -1,0 +1,64 @@
+################################################################################
+#
+# ------ For Linux64 & intel fortran&C & intel mpi -----
+#
+################################################################################
+
+##### Fortran setting
+#FFLAGS is set in Mkinclude. FFLAGS_DEBUG is used if IAB_DEBUG=T
+
+FC  = ifort
+MPIFC = mpiifort
+
+FFLAGS_FAST  = -fpp -m64 -O3 -xHost                 \
+               -assume byterecl -convert big_endian \
+               -fp-model precise -heap-arrays
+
+FFLAGS_DEBUG = -fpp -m64 -O0                        \
+               -assume byterecl -convert big_endian \
+               -fpe0 -fp-model precise -heap-arrays \
+               -check all -warn all -g -traceback
+
+
+
+##### C setting
+#CFLAGS is set in Mkinclude. CFLAGS_DEBUG is used if IAB_DEBUG=T
+
+CC      = icc
+MPICC   = mpiicc
+
+CFLAGS_FAST  = -O3 -xHost -ip -ftz -mcmodel=medium -shared-intel
+CFLAGS_DEBUG = -O0
+
+
+
+##### Special setting
+
+FFLAGS_OPENMP = -openmp -no-heap-arrays
+
+FFLAGS_SYSDEPEND =
+CFLAGS_SYSDEPEND =
+
+##### Linker setting
+
+LD      = $(FC)
+MPILD   = $(MPIFC)
+LDFLAGS = $(FFLAGS)
+
+
+
+################################################################################
+
+###### PAPI library
+# Please set environment variable
+# example:
+# export IAB_PAPI_INCLUDE="-I/usr/include"
+# export IAB_PAPI_LIBS="-L/usr/lib64 -lpapi"
+
+##### for frontend
+MAKE    = make
+INSTALL = cp -u
+AR      = ar
+ARFLAGS = r
+RANLIB  = ranlib
+JOBSUB  = sh

@@ -1,0 +1,62 @@
+################################################################################
+#
+# ------ For Linux64 & pgi fortran&C & openmpi -----
+#
+################################################################################
+
+##### Fortran setting
+#FFLAGS is set in Mkinclude. FFLAGS_DEBUG is used if IAB_DEBUG=T
+
+FC      = pgfortran
+MPIFC   = mpif90
+
+FFLAGS_FAST  = -Mpreprocess -m64 -fast                \
+               -Mbyteswapio -Minfo                    \
+               -Mflushz -Mfprelaxed -Mfpapprox -Kieee \
+               -Mvect=assoc
+
+FFLAGS_DEBUG = -Mpreprocess -m64 -O0 \
+               -Mbyteswapio -Minfo   \
+               -Mflushz -Ktrap=fp    \
+               -Mbounds -Mstandard   \
+               -g -traceback
+
+
+
+##### C setting
+#CFLAGS is set in Mkinclude. CFLAGS_DEBUG is used if IAB_DEBUG=T
+
+CC      = pgcc
+MPICC   = mpicc
+
+CFLAGS_FAST  = -fast
+CFLAGS_DEBUG = -O0
+
+
+
+##### Special setting
+
+FFLAGS_OPENMP = -mp
+
+FFLAGS_OPENACC = -acc -ta=tesla,cuda8.0,cc60 -Mcuda -Minfo=accel
+
+FFLAGS_SYSDEPEND = -DPGI
+CFLAGS_SYSDEPEND = -DPGI
+
+##### Linker setting
+
+LD      = $(FC)
+MPILD   = $(MPIFC)
+LDFLAGS = $(FFLAGS)
+
+
+
+################################################################################
+
+##### for frontend
+MAKE    = make
+INSTALL = install
+AR      = ar
+ARFLAGS = r
+RANLIB  = ranlib
+JOBSUB  = sh

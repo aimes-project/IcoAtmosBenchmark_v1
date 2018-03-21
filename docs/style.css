@@ -1,0 +1,114 @@
+body {
+    background:#007EA7;
+    font-family:"Hiragino Kaku Gothic Pro", Meiryo, sans-serif;
+    color:#000;
+    margin:20px auto;
+    text-align:center;
+    line-height:1.5em;
+    width:960px;
+}
+h1, h2, h3, h4, h5, h6 {
+    font-family:"Hiragino Kaku Gothic Pro", Meiryo, sans-serif;
+    font-weight:lighter;
+}
+a:link, a:visited {
+    text-decoration:none;
+}
+nav, section {
+    display:block;
+    -webkit-border-radius: 8px;
+    -moz-border-radius: 8px;
+    border-radius: 8px;
+    -webkit-box-shadow: 0px 0px 4px #454DB7;
+    -moz-box-shadow: 0px 0px 4px #454DB7;
+    box-shadow: 0px 0px 4px #454DB7;
+    border: 1px solid #d3d3d3;
+    background-color: #fff;
+    margin:5px;
+    padding: 0px 20px 10px 20px;
+    font-size: 12pt;
+    color: #000;
+    text-align: left;
+}
+header {
+    text-align: left;
+    margin:5px;
+    color:#003249;
+    border-bottom: 6px solid #003249;
+}
+header ul {
+    margin: 0px 0px 0px 0px;
+    padding:8px;
+    list-style-type:none;
+    background-color: #454DB7;
+}
+header li {
+    padding:8px;
+    list-style-type:none;
+    display:inline;
+    border-right: 1px solid #D0D0D0;
+}
+header a:link, header a:visited {
+    color:#FFF;
+    font-weight:normal;
+}
+nav {
+    float:left;
+    width:150px;
+}
+nav h1 {
+    font-size:1.4em;
+}
+section {
+    float:left;
+    width:706px;
+    text-align:justify;
+    margin-bottom:10px;
+}
+section h2 {
+    font-size:1.1em;
+    font-weight:bold;
+    color: #333;
+}
+section a:link, section a:visited {
+}
+section a:hover {
+    color:#C01078;
+}
+section h1, nav h1 {
+    -webkit-border-radius: 4px;
+    -moz-border-radius: 4px;
+    border-radius: 4px;
+    background-color:#605F5F;
+    color:#EEE;
+    padding:10px;
+    margin:10px -10px;
+    text-shadow:1px 1px 5px #000;
+}
+section ul,ol {
+    font-size:0.9em;
+    padding:0px;
+}
+section li {
+    margin:0px 30px;
+    padding:0px;
+    padding-bottom:11px;
+}
+section p {
+    font-size:0.9em;
+}
+article {
+    margin:0 0 30px 0;
+}
+.license {
+    line-height:1.3em;
+    font-size:0.8em;
+}
+
+footer {
+    clear:both !important;
+    margin:5px;
+    text-align: left;
+    color:#003249;
+    border-top: 6px solid #003249;
+}

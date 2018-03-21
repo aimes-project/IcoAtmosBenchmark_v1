@@ -30,3 +30,24 @@
 *.exe
 *.out
 *.app
+
+# Tex intermediates
+*.aux
+*.bbl
+*.blg
+*.dvi
+*.fdb_latexmk
+*.fls
+*.log
+*.synctex.gz
+*.toc
+
+# Documents
+IAB_NICAM_kernels.pdf
+IAB_DYNAMICO_kernels.pdf
+IAB_ICON_kernels.pdf
+
+# Data
+snapshot.*.pe000000
+
+*~
