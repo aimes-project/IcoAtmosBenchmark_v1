@@ -1,0 +1,46 @@
+ [KERNEL] comp_pvort
+ *** Start  initialize
+                iim, jjm, llm:    23    25    19
+             ij_begin, ij_end:    48   528
+     ij_begin_ext, ij_end_ext:    24   552
+             ll_begin, ll_end:     1    19
+        t_right, t_rup, t_lup:     1    23    22
+     t_left, t_ldown, t_rdown:    -1   -23   -22
+        u_right, u_rup, u_lup:     0  1173   575
+     u_left, u_ldown, u_rdown:    -1  1150   553
+           z_rup, z_up, z_lup:   598     0   597
+     z_ldown, z_down, z_rdown:   -23   575   -22
+                   caldyn_eta:     1
+                            g:     9.80000000
+ +check[Av              ] max=  4.1228713627140027E+11,min=  0.0000000000000000E+00,sum=  3.2428753277257527E+13
+ +check[de              ] max=  4.5171816240714993E+06,min=  0.0000000000000000E+00,sum=  4.7785815753077912E+08
+ +check[Riv2            ] max=  3.8193271158709069E-01,min=  0.0000000000000000E+00,sum=  9.6499999999999977E+02
+ +check[fv              ] max=  8.2383275804860789E-05,min= -6.6879410680009186E-05,sum=  4.1115175112148659E-03
+ +check[mass_dak        ] max=  3.9864758943842335E+03,min= -4.2200064724847380E+03,sum=  1.1368683772161603E-13
+ +check[mass_dbk        ] max=  1.6280745944237918E-01,min=  0.0000000000000000E+00,sum=  1.0000000000000000E+00
+ *** Finish initialize
+ *** Start kernel
+ ### check point iteration:        1000
+ ### Input ###
+ +check[u               ] max=  4.1278968179782127E-01,min= -4.1278968179782127E-01,sum=  1.6791131703073393E+01
+ +check[ps              ] max=  1.0000000000000000E+05,min=  1.0000000000000000E+05,sum=  5.7500000000000000E+07
+ +check[theta_rhodz     ] max=  3.9393370687019045E+05,min=  0.0000000000000000E+00,sum=  1.8099621340626464E+09
+ +check[theta_prev      ] max=  8.0139914420291746E+02,min=  0.0000000000000000E+00,sum=  3.8582633571973117E+06
+ +check[rhodz_prev      ] max=  1.2306877011993038E+03,min=  0.0000000000000000E+00,sum=  5.3979591836733194E+06
+ +check[qu_prev         ] max=  1.0339537867296609E-06,min= -8.4408169682701225E-07,sum=  3.9419811615778674E-04
+ +check[qv_prev         ] max=  1.0397552030841796E-06,min= -8.4408169685381862E-07,sum=  2.6984926372303133E-04
+ ### Output ###
+ +check[theta           ] max=  8.0139914420291746E+02,min=  0.0000000000000000E+00,sum=  3.8582633571973117E+06
+ +check[rhodz           ] max=  1.2306877011993038E+03,min=  0.0000000000000000E+00,sum=  5.3979591836733194E+06
+ +check[qu              ] max=  1.0626772908333491E-06,min= -8.5290650439776975E-07,sum=  3.9864842567446446E-04
+ +check[qv              ] max=  1.0855993800007362E-06,min= -8.9078811385791910E-07,sum=  2.7461310165802981E-04
+ ### final iteration:        1000
+ ### Validation : grid-by-grid diff ###
+ +check[theta           ] max=  0.0000000000000000E+00,min=  0.0000000000000000E+00,sum=  0.0000000000000000E+00
+ +check[rhodz           ] max=  0.0000000000000000E+00,min=  0.0000000000000000E+00,sum=  0.0000000000000000E+00
+ +check[qu              ] max=  0.0000000000000000E+00,min=  0.0000000000000000E+00,sum=  0.0000000000000000E+00
+ +check[qv              ] max=  0.0000000000000000E+00,min=  0.0000000000000000E+00,sum=  0.0000000000000000E+00
+ *** Finish kernel
+
+ *** Computational Time Report
+ *** ID=001 : MAIN_comp_pvort                  T=     0.248 N=   1000

@@ -1,0 +1,26 @@
+BINDIR = $(TOPDIR)/bin
+
+ifeq ($(IAB_DEBUG),T)
+   FFLAGS = $(FFLAGS_DEBUG) $(FFLAGS_SYSDEPEND) -DDEBUG
+   CFLAGS = $(CFLAGS_DEBUG) $(CFLAGS_SYSDEPEND)
+else
+   FFLAGS = $(FFLAGS_FAST)  $(FFLAGS_SYSDEPEND)
+   CFLAGS = $(CFLAGS_FAST)  $(CFLAGS_SYSDEPEND)
+endif
+
+ifeq ($(IAB_USE_SINGLEFP),T)
+   FFLAGS += -DSINGLE
+endif
+
+ifeq ($(IAB_ENABLE_OPENMP),T)
+   FFLAGS += $(FFLAGS_OPENMP)
+endif
+
+ifeq ($(IAB_ENABLE_OPENACC),T)
+   FFLAGS += $(FFLAGS_OPENACC)
+endif
+
+# PAPI library setting
+ifeq ($(IAB_ENABLE_PAPI),T)
+   FFLAGS += -DPAPI
+endif
