@@ -12,11 +12,11 @@
  ### Output ###
  +check[dscl            ] max=  6.1941315670898286E-08,min= -7.0374144752795210E-08,sum= -2.7407850230958630E-07
  +check[dscl_pl         ] max=  2.2139244811324830E-08,min= -6.0170678327656943E-11,sum=  1.8274579608905828E-07
- ### Varidation by diff ###
+ ### Validation : grid-by-grid diff ###
  +check[check_dscl      ] max=  6.6174449004242214E-24,min= -6.6174449004242214E-24,sum=  5.9025714456257581E-23
  +check[check_dscl_pl   ] max=  3.3087224502121107E-24,min= -3.3087224502121107E-24,sum= -3.0502285087892896E-24
  *** Finish kernel
 
  *** Computational Time Report
- *** ID=001 : MAIN_dyn_diffusion               T=     0.020 N=      1
- *** ID=002 : OPRT_diffusion                   T=     0.020 N=      1
+ *** ID=001 : MAIN_dyn_diffusion               T=     0.019 N=      1
+ *** ID=002 : OPRT_diffusion                   T=     0.019 N=      1

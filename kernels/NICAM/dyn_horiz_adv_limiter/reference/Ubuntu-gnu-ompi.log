@@ -36,5 +36,5 @@
  *** Finish kernel
 
  *** Computational Time Report
- *** ID=001 : MAIN_dyn_horiz_adv_limiter       T=     0.180 N=      1
- *** ID=002 : ____horizontal_adv_limiter       T=     0.164 N=      2
+ *** ID=001 : MAIN_dyn_horiz_adv_limiter       T=     0.184 N=      1
+ *** ID=002 : ____horizontal_adv_limiter       T=     0.172 N=      2

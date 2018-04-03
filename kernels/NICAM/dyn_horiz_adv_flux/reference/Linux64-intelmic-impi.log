@@ -32,7 +32,7 @@
  +check[flx_h_pl        ] max=  1.1002449397299904E-01,min= -1.0379423223736732E-01,sum=  2.3428578735122312E-02
  +check[GRD_xc          ] max=  6.3711740974481208E+06,min= -2.8421843880731151E+06,sum=  2.0008127660775812E+13
  +check[GRD_xc_pl       ] max=  6.3711707368004546E+06,min= -6.3711702446065033E+06,sum= -5.2402711763852555E+05
- ### Varidation : grid-by-grid diff ###
+ ### Validation : grid-by-grid diff ###
  +check[check_flx_h     ] max=  5.5511151231257827E-17,min= -5.5511151231257827E-17,sum= -8.1370702291194256E-15
  +check[check_flx_h_pl  ] max=  2.7755575615628914E-17,min= -4.1633363423443370E-17,sum=  1.4571677198205180E-16
  +check[check_GRD_xc    ] max=  9.3132257461547852E-10,min= -9.3132257461547852E-10,sum= -2.0256422761377735E-08
@@ -41,4 +41,4 @@
 
  *** Computational Time Report
  *** ID=001 : MAIN_dyn_horiz_adv_flux          T=     0.059 N=      1
- *** ID=002 : ____horizontal_adv_flux          T=     0.058 N=      1
+ *** ID=002 : ____horizontal_adv_flux          T=     0.059 N=      1

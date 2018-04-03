@@ -34,5 +34,5 @@
  *** Finish kernel
  
  *** Computational Time Report
- *** ID=001 : MAIN_dyn_divdamp                 T=     0.030 N=      1
- *** ID=002 : OPRT3D_divdamp                   T=     0.030 N=      1
+ *** ID=001 : MAIN_dyn_divdamp                 T=     0.028 N=      1
+ *** ID=002 : OPRT3D_divdamp                   T=     0.027 N=      1

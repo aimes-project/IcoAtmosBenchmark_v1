@@ -1705,8 +1705,8 @@ number|ifrom|jfrom|rfrom|gfrom|lfrom|pfrom|  ito|  jto|  rto|  gto|  lto|  pto
  *** Computational Time Report
  *** Rap level is             2
  *** ID=001 : MAIN_Kernel_ALL                  T=     0.018 N=        1
- *** ID=002 : MAIN_COMM_data_transfer          T=     0.001 N=        2
- *** ID=003 : MAIN_COMM_var                    T=     0.001 N=        1
+ *** ID=002 : MAIN_COMM_data_transfer          T=     0.002 N=        2
+ *** ID=003 : MAIN_COMM_var                    T=     0.000 N=        1
  
  ++++++ Stop MPI
  

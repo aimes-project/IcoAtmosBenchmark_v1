@@ -26,11 +26,11 @@
  ### Output ###
  +check[rhogw           ] max=  6.3321830580406702E-01,min= -5.5759247708875381E-01,sum=  3.9071354372140138E+02
  +check[rhogw_pl        ] max=  9.9023353298473074E-02,min= -7.4852014128754460E-03,sum=  2.1725659627743781E+00
- ### Varidation : grid-by-grid diff ###
+ ### Validation : grid-by-grid diff ###
  +check[check_rhogw     ] max=  1.3322676295501878E-15,min= -7.7715611723760958E-16,sum= -1.5505409717808685E-14
  +check[check_rhogw_pl  ] max=  2.4286128663675299E-17,min= -4.1633363423443370E-17,sum= -6.5869697137731957E-16
  *** Finish kernel
 
  *** Computational Time Report
- *** ID=001 : MAIN_dyn_vi_rhow_solver          T=     0.014 N=      1
- *** ID=002 : ____vi_rhow_solver               T=     0.013 N=      1
+ *** ID=001 : MAIN_dyn_vi_rhow_solver          T=     0.018 N=      1
+ *** ID=002 : ____vi_rhow_solver               T=     0.016 N=      1

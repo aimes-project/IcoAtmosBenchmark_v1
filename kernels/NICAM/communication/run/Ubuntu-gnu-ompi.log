@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
-[[11172,1],0]: A high-performance Open MPI point-to-point messaging module
+[[3482,1],0]: A high-performance Open MPI point-to-point messaging module
 was unable to find any relevant network interfaces:
 
 Module: OpenFabrics (openib)

@@ -40,5 +40,5 @@
  *** Finish kernel
  
  *** Computational Time Report
- *** ID=001 : MAIN_dyn_horiz_adv_flux          T=     0.039 N=      1
- *** ID=002 : ____horizontal_adv_flux          T=     0.039 N=      1
+ *** ID=001 : MAIN_dyn_horiz_adv_flux          T=     0.036 N=      1
+ *** ID=002 : ____horizontal_adv_flux          T=     0.036 N=      1

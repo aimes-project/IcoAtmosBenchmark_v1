@@ -28,7 +28,7 @@
  +check[q_a_pl          ] max=  6.5571419615446418E+00,min= -5.6211573453294959E-15,sum=  1.5683664645246540E+03
  +check[Qout_prev       ] max=  2.5201719369799781E+05,min= -7.0121044696269173E+05,sum=  4.7462261170534119E+06
  +check[Qout_prev_pl    ] max=  3.4849498839973911E+01,min= -3.6368061161685844E+01,sum=  7.2956220495347202E+02
- ### Varidation : grid-by-grid diff ###
+ ### Validation : grid-by-grid diff ###
  +check[check_q_a       ] max=  0.0000000000000000E+00,min=  0.0000000000000000E+00,sum=  0.0000000000000000E+00
  +check[check_q_a_pl    ] max=  0.0000000000000000E+00,min=  0.0000000000000000E+00,sum=  0.0000000000000000E+00
  +check[check_Qout_prev ] max=  0.0000000000000000E+00,min=  0.0000000000000000E+00,sum=  0.0000000000000000E+00
@@ -36,5 +36,5 @@
  *** Finish kernel
 
  *** Computational Time Report
- *** ID=001 : MAIN_dyn_horiz_adv_limiter       T=     0.180 N=      1
- *** ID=002 : ____horizontal_adv_limiter       T=     0.166 N=      2
+ *** ID=001 : MAIN_dyn_horiz_adv_limiter       T=     0.118 N=      1
+ *** ID=002 : ____horizontal_adv_limiter       T=     0.103 N=      2
