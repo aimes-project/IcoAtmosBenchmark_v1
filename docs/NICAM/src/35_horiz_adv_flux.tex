@@ -1,0 +1,479 @@
+\section{\src{dyn_horiz_adv_flux}}
+
+\subsection{Description}
+
+Kernel \src{dyn_horiz_adv_flux} is taken from the original subroutine
+\src{horizontal_flux} in \NICAM.
+%
+This subroutine is originally defined in \src{mod_src_tracer}.
+%
+Subroutine \src{horizontal_flux} is to calculate horizontal advection
+term, i.e. horizontal mass flux and mass centroid position of an area,
+which is used for the estimation of mass flux passing through an edge of control cell during one time step.
+%
+In NICAM, a third order upwind scheme proposed by \cite{Miura:2007bs} is used
+for the horizontal tracer advection on the icosahedral grid, briefly
+described in \autoref{s:upwind_scheme}.
+See section 4. in \cite{Tomita2010ecmwf} for details of tracer scheme in \NICAM, too.
+
+
+
+\subsection{Discretization and code}
+
+Argument lists and local variables definition part of this subroutine is
+as follows.
+
+\begin{LstF90}[name=horizontal_flux]
+subroutine horizontal_flux( &
+     flx_h,  flx_h_pl,  &
+     GRD_xc, GRD_xc_pl, &
+     rho,    rho_pl,    &
+     rhovx,  rhovx_pl,  &
+     rhovy,  rhovy_pl,  &
+     rhovz,  rhovz_pl,  &
+     dt                 )
+  implicit none
+
+  real(RP), intent(out) :: flx_h    (ADM_gall   ,ADM_kall,ADM_lall   ,6)               ! horizontal mass flux
+  real(RP), intent(out) :: flx_h_pl (ADM_gall_pl,ADM_kall,ADM_lall_pl  )
+  real(RP), intent(out) :: GRD_xc   (ADM_gall   ,ADM_kall,ADM_lall   ,AI:AJ,XDIR:ZDIR) ! mass centroid position
+  real(RP), intent(out) :: GRD_xc_pl(ADM_gall_pl,ADM_kall,ADM_lall_pl,      XDIR:ZDIR)
+  real(RP), intent(in)  :: rho      (ADM_gall   ,ADM_kall,ADM_lall   )                 ! rho at cell center
+  real(RP), intent(in)  :: rho_pl   (ADM_gall_pl,ADM_kall,ADM_lall_pl)
+  real(RP), intent(in)  :: rhovx    (ADM_gall   ,ADM_kall,ADM_lall   )
+  real(RP), intent(in)  :: rhovx_pl (ADM_gall_pl,ADM_kall,ADM_lall_pl)
+  real(RP), intent(in)  :: rhovy    (ADM_gall   ,ADM_kall,ADM_lall   )
+  real(RP), intent(in)  :: rhovy_pl (ADM_gall_pl,ADM_kall,ADM_lall_pl)
+  real(RP), intent(in)  :: rhovz    (ADM_gall   ,ADM_kall,ADM_lall   )
+  real(RP), intent(in)  :: rhovz_pl (ADM_gall_pl,ADM_kall,ADM_lall_pl)
+  real(RP), intent(in)  :: dt
+
+  real(RP) :: rhot_TI  (ADM_gall   ) ! rho at cell vertex
+  real(RP) :: rhot_TJ  (ADM_gall   ) ! rho at cell vertex
+  real(RP) :: rhot_pl  (ADM_gall_pl)
+  real(RP) :: rhovxt_TI(ADM_gall   )
+  real(RP) :: rhovxt_TJ(ADM_gall   )
+  real(RP) :: rhovxt_pl(ADM_gall_pl)
+  real(RP) :: rhovyt_TI(ADM_gall   )
+  real(RP) :: rhovyt_TJ(ADM_gall   )
+  real(RP) :: rhovyt_pl(ADM_gall_pl)
+  real(RP) :: rhovzt_TI(ADM_gall   )
+  real(RP) :: rhovzt_TJ(ADM_gall   )
+  real(RP) :: rhovzt_pl(ADM_gall_pl)
+
+  real(RP) :: rhovxt2
+  real(RP) :: rhovyt2
+  real(RP) :: rhovzt2
+  real(RP) :: flux
+  real(RP) :: rrhoa2
+
+  integer  :: gmin, gmax, kall, iall
+  real(RP) :: EPS
+
+  integer  :: ij
+  integer  :: ip1j, ijp1, ip1jp1
+  integer  :: im1j, ijm1
+
+  integer  :: i, j, k, l, n, v
+  !---------------------------------------------------------------------------
+\end{LstF90}
+
+
+Output variable \src{flx_h} is horizontal mass flux and \src{GRD_xc} is
+the spatial position $\bm{C}_i$ in \autoref{f:2007mwr2101_1-0}(b).
+%
+Note that
+\src{flx_h} has 4th dimension whose size is 6, specifying
+6 edges of hexagon control volume.
+%
+Similarly,
+\src{GRD_xc} has 4th dimension ranged \src{(AI:AJ)} and 5th
+dimension ranged \src{(XDIR:ZDIR)}, the former specifies three arc
+points and the latter specifies 3 coodinates of the position.
+%
+Input variable \src{rho}, \src{rhovx},
+\src{rhovy} and \src{rhovz} are $\rho$, $\rho v_x$, $\rho v_y$, and $\rho v_z$
+at cell center with metrics multiplied, respectively.
+%
+Other arguments with suffix \src{_pl} are for the pole region.
+
+Among local variables, \src{rhot_TI}, \src{rhot_TJ} are interpolated $\rho$ at
+the gravitational center of downward triangle and upward triangle, respectively.
+Other variables \src{rho*} with suffix \src{_TI}, \src{_TJ} are the same.
+
+
+The first half of main part is as follows.
+
+\begin{LstF90}[name=horizontal_flux,firstnumber=last]
+  call DEBUG_rapstart('____horizontal_adv_flux')
+
+  gmin = ADM_gmin
+  gmax = ADM_gmax
+  kall = ADM_kall
+  iall = ADM_gall_1d
+
+  EPS  = CONST_EPS
+
+  do l = 1, ADM_lall
+     !$omp parallel default(none), &
+     !$omp private(i,j,k,ij,ip1j,ip1jp1,ijp1,im1j,ijm1,                                        &
+     !$omp         rrhoa2,rhovxt2,rhovyt2,rhovzt2,flux),                                       &
+     !$omp shared(l,ADM_have_sgp,gmin,gmax,kall,iall,rho,rhovx,rhovy,rhovz,flx_h,dt,           &
+     !$omp        rhot_TI,rhovxt_TI,rhovyt_TI,rhovzt_TI,rhot_TJ,rhovxt_TJ,rhovyt_TJ,rhovzt_TJ, &
+     !$omp        GRD_xc,GRD_xr,GMTR_p,GMTR_t,GMTR_a,EPS)
+     do k = 1, kall
+
+        ! (i,j),(i+1,j)
+        !$omp do
+        do j = gmin-1, gmax
+        do i = gmin-1, gmax
+           ij     = (j-1)*iall + i
+           ip1j   = ij + 1
+
+           rhot_TI  (ij) = rho  (ij  ,k,l) * GMTR_t(ij,K0,l,TI,W1) &
+                         + rho  (ip1j,k,l) * GMTR_t(ij,K0,l,TI,W2)
+           rhovxt_TI(ij) = rhovx(ij  ,k,l) * GMTR_t(ij,K0,l,TI,W1) &
+                         + rhovx(ip1j,k,l) * GMTR_t(ij,K0,l,TI,W2)
+           rhovyt_TI(ij) = rhovy(ij  ,k,l) * GMTR_t(ij,K0,l,TI,W1) &
+                         + rhovy(ip1j,k,l) * GMTR_t(ij,K0,l,TI,W2)
+           rhovzt_TI(ij) = rhovz(ij  ,k,l) * GMTR_t(ij,K0,l,TI,W1) &
+                         + rhovz(ip1j,k,l) * GMTR_t(ij,K0,l,TI,W2)
+
+           rhot_TJ  (ij) = rho  (ij  ,k,l) * GMTR_t(ij,K0,l,TJ,W1)
+           rhovxt_TJ(ij) = rhovx(ij  ,k,l) * GMTR_t(ij,K0,l,TJ,W1)
+           rhovyt_TJ(ij) = rhovy(ij  ,k,l) * GMTR_t(ij,K0,l,TJ,W1)
+           rhovzt_TJ(ij) = rhovz(ij  ,k,l) * GMTR_t(ij,K0,l,TJ,W1)
+        enddo
+        enddo
+        !$omp end do
+
+        ! (i,j+1),(i+1,j+1)
+        !$omp do
+        do j = gmin-1, gmax
+        do i = gmin-1, gmax
+           ij     = (j-1)*iall + i
+           ijp1   = ij + iall
+           ip1jp1 = ij + iall + 1
+
+           rhot_TI  (ij) = rhot_TI  (ij) + rho  (ip1jp1,k,l) * GMTR_t(ij,K0,l,TI,W3)
+           rhovxt_TI(ij) = rhovxt_TI(ij) + rhovx(ip1jp1,k,l) * GMTR_t(ij,K0,l,TI,W3)
+           rhovyt_TI(ij) = rhovyt_TI(ij) + rhovy(ip1jp1,k,l) * GMTR_t(ij,K0,l,TI,W3)
+           rhovzt_TI(ij) = rhovzt_TI(ij) + rhovz(ip1jp1,k,l) * GMTR_t(ij,K0,l,TI,W3)
+
+           rhot_TJ  (ij) = rhot_TJ  (ij) + rho  (ip1jp1,k,l) * GMTR_t(ij,K0,l,TJ,W2) &
+                                         + rho  (ijp1  ,k,l) * GMTR_t(ij,K0,l,TJ,W3)
+           rhovxt_TJ(ij) = rhovxt_TJ(ij) + rhovx(ip1jp1,k,l) * GMTR_t(ij,K0,l,TJ,W2) &
+                                         + rhovx(ijp1  ,k,l) * GMTR_t(ij,K0,l,TJ,W3)
+           rhovyt_TJ(ij) = rhovyt_TJ(ij) + rhovy(ip1jp1,k,l) * GMTR_t(ij,K0,l,TJ,W2) &
+                                         + rhovy(ijp1  ,k,l) * GMTR_t(ij,K0,l,TJ,W3)
+           rhovzt_TJ(ij) = rhovzt_TJ(ij) + rhovz(ip1jp1,k,l) * GMTR_t(ij,K0,l,TJ,W2) &
+                                         + rhovz(ijp1  ,k,l) * GMTR_t(ij,K0,l,TJ,W3)
+        enddo
+        enddo
+        !$omp end do
+
+        if ( ADM_have_sgp(l) ) then
+           !$omp master
+           j = gmin-1
+           i = gmin-1
+
+           ij   = (j-1)*iall + i
+           ip1j = ij + 1
+
+           rhot_TI  (ij) = rhot_TJ  (ip1j)
+           rhovxt_TI(ij) = rhovxt_TJ(ip1j)
+           rhovyt_TI(ij) = rhovyt_TJ(ip1j)
+           rhovzt_TI(ij) = rhovzt_TJ(ip1j)
+           !$omp end master
+        endif
+
+\end{LstF90}%$$
+
+In long $l$-loop and $k$-loop, first part calculate $\rho$, $\rho v_x$,
+$\rho v_y$, $\rho v_z$ at two center points of triangle at \src{TI} and \src{TJ}.
+%
+Note that two triangular points are surrounded by 4 grid points $(i,j)$,
+$(i+1,j)$, $(i+1,j+1)$ and $(i,j+1)$.
+%
+The first $i,j$-double loop(l.73-) calculates contribution from the former two
+grid points, and the second $i,j$-double loop(l.97-) does from the latter
+two grid points.
+%
+\src{IF} clause from l.120 is treatment for the singular point.
+%
+\src{GMTR_t} is the metrics for triangle linear interpolation from three trianglar vertices to gravitational center point of triangle.
+In original \NICAM, this array is defined as \src{GMTR_T_var} in module
+\src{mod_gmtr}.
+%
+In this kernel program, this is read from input data file.
+%
+Note that \src{TI}, \src{TJ}, \src{W1}, \src{W2} and \src{W3} are not
+loop index but constant defined in \file{problem_size.inc}, those are
+originally defined in \src{mod_gmtr} in \NICAM.
+
+
+
+The second half of main part is as follows.
+
+\begin{LstF90}[name=horizontal_flux,firstnumber=last]
+        !--- calculate flux and mass centroid position
+
+!OCL XFILL
+        !$omp do
+        do j = 1, iall
+        do i = 1, iall
+           if (      i < gmin .OR. i > gmax &
+                .OR. j < gmin .OR. j > gmax ) then
+              ij = (j-1)*iall + i
+
+              flx_h(ij,k,l,1) = 0.0_RP
+              flx_h(ij,k,l,2) = 0.0_RP
+              flx_h(ij,k,l,3) = 0.0_RP
+              flx_h(ij,k,l,4) = 0.0_RP
+              flx_h(ij,k,l,5) = 0.0_RP
+              flx_h(ij,k,l,6) = 0.0_RP
+
+              GRD_xc(ij,k,l,AI ,XDIR) = 0.0_RP
+              GRD_xc(ij,k,l,AI ,YDIR) = 0.0_RP
+              GRD_xc(ij,k,l,AI ,ZDIR) = 0.0_RP
+              GRD_xc(ij,k,l,AIJ,XDIR) = 0.0_RP
+              GRD_xc(ij,k,l,AIJ,YDIR) = 0.0_RP
+              GRD_xc(ij,k,l,AIJ,ZDIR) = 0.0_RP
+              GRD_xc(ij,k,l,AJ ,XDIR) = 0.0_RP
+              GRD_xc(ij,k,l,AJ ,YDIR) = 0.0_RP
+              GRD_xc(ij,k,l,AJ ,ZDIR) = 0.0_RP
+           endif
+        enddo
+        enddo
+        !$omp end do
+
+        !$omp do
+        do j = gmin  , gmax
+        do i = gmin-1, gmax
+           ij     = (j-1)*iall + i
+           ip1j   = ij + 1
+           ijm1   = ij - iall
+
+           rrhoa2  = 1.0_RP / max( rhot_TJ(ijm1) + rhot_TI(ij), EPS ) ! doubled
+           rhovxt2 = rhovxt_TJ(ijm1) + rhovxt_TI(ij)
+           rhovyt2 = rhovyt_TJ(ijm1) + rhovyt_TI(ij)
+           rhovzt2 = rhovzt_TJ(ijm1) + rhovzt_TI(ij)
+
+           flux = 0.5_RP * ( rhovxt2 * GMTR_a(ij,k0,l,AI ,HNX) &
+                           + rhovyt2 * GMTR_a(ij,k0,l,AI ,HNY) &
+                           + rhovzt2 * GMTR_a(ij,k0,l,AI ,HNZ) )
+
+           flx_h(ij  ,k,l,1) =  flux * GMTR_p(ij  ,k0,l,P_RAREA) * dt
+           flx_h(ip1j,k,l,4) = -flux * GMTR_p(ip1j,k0,l,P_RAREA) * dt
+
+           GRD_xc(ij,k,l,AI,XDIR) = GRD_xr(ij,K0,l,AI,XDIR) - rhovxt2 * rrhoa2 * dt * 0.5_RP
+           GRD_xc(ij,k,l,AI,YDIR) = GRD_xr(ij,K0,l,AI,YDIR) - rhovyt2 * rrhoa2 * dt * 0.5_RP
+           GRD_xc(ij,k,l,AI,ZDIR) = GRD_xr(ij,K0,l,AI,ZDIR) - rhovzt2 * rrhoa2 * dt * 0.5_RP
+        enddo
+        enddo
+        !$omp end do
+
+        !$omp do
+        do j = gmin-1, gmax
+        do i = gmin-1, gmax
+           ij     = (j-1)*iall + i
+           ip1jp1 = ij + iall + 1
+
+           rrhoa2  = 1.0_RP / max( rhot_TI(ij) + rhot_TJ(ij), EPS ) ! doubled
+           rhovxt2 = rhovxt_TI(ij) + rhovxt_TJ(ij)
+           rhovyt2 = rhovyt_TI(ij) + rhovyt_TJ(ij)
+           rhovzt2 = rhovzt_TI(ij) + rhovzt_TJ(ij)
+
+           flux = 0.5_RP * ( rhovxt2 * GMTR_a(ij,k0,l,AIJ,HNX) &
+                           + rhovyt2 * GMTR_a(ij,k0,l,AIJ,HNY) &
+                           + rhovzt2 * GMTR_a(ij,k0,l,AIJ,HNZ) )
+
+           flx_h(ij    ,k,l,2) =  flux * GMTR_p(ij    ,k0,l,P_RAREA) * dt
+           flx_h(ip1jp1,k,l,5) = -flux * GMTR_p(ip1jp1,k0,l,P_RAREA) * dt
+
+           GRD_xc(ij,k,l,AIJ,XDIR) = GRD_xr(ij,K0,l,AIJ,XDIR) - rhovxt2 * rrhoa2 * dt * 0.5_RP
+           GRD_xc(ij,k,l,AIJ,YDIR) = GRD_xr(ij,K0,l,AIJ,YDIR) - rhovyt2 * rrhoa2 * dt * 0.5_RP
+           GRD_xc(ij,k,l,AIJ,ZDIR) = GRD_xr(ij,K0,l,AIJ,ZDIR) - rhovzt2 * rrhoa2 * dt * 0.5_RP
+        enddo
+        enddo
+        !$omp end do
+
+        !$omp do
+        do j = gmin-1, gmax
+        do i = gmin  , gmax
+           ij     = (j-1)*iall + i
+           ijp1   = ij + iall
+           im1j   = ij - 1
+
+           rrhoa2  = 1.0_RP / max( rhot_TJ(ij) + rhot_TI(im1j), EPS ) ! doubled
+           rhovxt2 = rhovxt_TJ(ij) + rhovxt_TI(im1j)
+           rhovyt2 = rhovyt_TJ(ij) + rhovyt_TI(im1j)
+           rhovzt2 = rhovzt_TJ(ij) + rhovzt_TI(im1j)
+
+           flux = 0.5_RP * ( rhovxt2 * GMTR_a(ij,k0,l,AJ ,HNX) &
+                           + rhovyt2 * GMTR_a(ij,k0,l,AJ ,HNY) &
+                           + rhovzt2 * GMTR_a(ij,k0,l,AJ ,HNZ) )
+
+           flx_h(ij  ,k,l,3) =  flux * GMTR_p(ij  ,k0,l,P_RAREA) * dt
+           flx_h(ijp1,k,l,6) = -flux * GMTR_p(ijp1,k0,l,P_RAREA) * dt
+
+           GRD_xc(ij,k,l,AJ,XDIR) = GRD_xr(ij,K0,l,AJ,XDIR) - rhovxt2 * rrhoa2 * dt * 0.5_RP
+           GRD_xc(ij,k,l,AJ,YDIR) = GRD_xr(ij,K0,l,AJ,YDIR) - rhovyt2 * rrhoa2 * dt * 0.5_RP
+           GRD_xc(ij,k,l,AJ,ZDIR) = GRD_xr(ij,K0,l,AJ,ZDIR) - rhovzt2 * rrhoa2 * dt * 0.5_RP
+        enddo
+        enddo
+        !$omp end do
+
+        if ( ADM_have_sgp(l) ) then
+           !$omp master
+           j = gmin
+           i = gmin
+
+           ij = (j-1)*iall + i
+
+           flx_h(ij,k,l,6) = 0.0_RP
+           !$omp end master
+        endif
+
+     enddo
+     !$omp end parallel
+  enddo
+
+\end{LstF90}
+
+There are 4 $i,j$-double loops in the long $k$ and $l$ loop
+continued from previous section.
+%
+After setting halo region as $0.0$, each 3 loops calculates\src{flx_h} and
+\src{GRD_x}c at each 3 arc points specified by \src{AI}, \src{AIJ}, \src{AJ}.
+%
+Here \src{GMTR_a} is the metrics for the arc points (the normal vector on the arc point).
+%
+In original \NICAM, the array is defined as \src{GMTR_A_var} in module
+\src{mod_gmtr}. In this kernel program, this is read from input data file.
+%
+Similarly, \src{GMTR_p} is the metrics for grid points (the reciprocal number of the area of the control cell).
+
+The last part is for the pole region, doing almost same calculation with
+the normal region.
+
+\begin{LstF90}[name=horizontal_flux,firstnumber=last]
+  if ( ADM_have_pl ) then
+     n = ADM_gslf_pl
+
+     do l = 1, ADM_lall_pl
+     do k = 1, ADM_kall
+
+        do v = ADM_gmin_pl, ADM_gmax_pl
+           ij   = v
+           ijp1 = v + 1
+           if( ijp1 == ADM_gmax_pl + 1 ) ijp1 = ADM_gmin_pl
+
+           rhot_pl  (v) = rho_pl  (n   ,k,l) * GMTR_t_pl(ij,K0,l,W1) &
+                        + rho_pl  (ij  ,k,l) * GMTR_t_pl(ij,K0,l,W2) &
+                        + rho_pl  (ijp1,k,l) * GMTR_t_pl(ij,K0,l,W3)
+           rhovxt_pl(v) = rhovx_pl(n   ,k,l) * GMTR_t_pl(ij,K0,l,W1) &
+                        + rhovx_pl(ij  ,k,l) * GMTR_t_pl(ij,K0,l,W2) &
+                        + rhovx_pl(ijp1,k,l) * GMTR_t_pl(ij,K0,l,W3)
+           rhovyt_pl(v) = rhovy_pl(n   ,k,l) * GMTR_t_pl(ij,K0,l,W1) &
+                        + rhovy_pl(ij  ,k,l) * GMTR_t_pl(ij,K0,l,W2) &
+                        + rhovy_pl(ijp1,k,l) * GMTR_t_pl(ij,K0,l,W3)
+           rhovzt_pl(v) = rhovz_pl(n   ,k,l) * GMTR_t_pl(ij,K0,l,W1) &
+                        + rhovz_pl(ij  ,k,l) * GMTR_t_pl(ij,K0,l,W2) &
+                        + rhovz_pl(ijp1,k,l) * GMTR_t_pl(ij,K0,l,W3)
+        enddo
+
+        do v = ADM_gmin_pl, ADM_gmax_pl
+           ij   = v
+           ijm1 = v - 1
+           if( ijm1 == ADM_gmin_pl - 1 ) ijm1 = ADM_gmax_pl
+
+           rrhoa2  = 1.0_RP / max( rhot_pl(ijm1) + rhot_pl(ij), EPS ) ! doubled
+           rhovxt2 = rhovxt_pl(ijm1) + rhovxt_pl(ij)
+           rhovyt2 = rhovyt_pl(ijm1) + rhovyt_pl(ij)
+           rhovzt2 = rhovzt_pl(ijm1) + rhovzt_pl(ij)
+
+           flux = 0.5_RP * ( rhovxt2 * GMTR_a_pl(ij,K0,l,HNX) &
+                           + rhovyt2 * GMTR_a_pl(ij,K0,l,HNY) &
+                           + rhovzt2 * GMTR_a_pl(ij,K0,l,HNZ) )
+
+           flx_h_pl(v,k,l) = flux * GMTR_p_pl(n,K0,l,P_RAREA) * dt
+
+           GRD_xc_pl(v,k,l,XDIR) = GRD_xr_pl(v,K0,l,XDIR) - rhovxt2 * rrhoa2 * dt * 0.5_RP
+           GRD_xc_pl(v,k,l,YDIR) = GRD_xr_pl(v,K0,l,YDIR) - rhovyt2 * rrhoa2 * dt * 0.5_RP
+           GRD_xc_pl(v,k,l,ZDIR) = GRD_xr_pl(v,K0,l,ZDIR) - rhovzt2 * rrhoa2 * dt * 0.5_RP
+        enddo
+
+     enddo
+     enddo
+  endif
+
+  call DEBUG_rapend  ('____horizontal_adv_flux')
+
+  return
+end subroutine horizontal_flux
+\end{LstF90}
+
+\subsection{Input data and result}
+
+Max/min/sum of input/output data of the kernel subroutine are output as
+a log.
+%
+Below is an example of \src{$IAB_SYS=Ubuntu-gnu-ompi} case.
+
+
+\begin{LstLog}
+ ### Input ###
+ +check[flx_h           ] max=  1.5610710092943020E-01,min= -1.5670677438306818E-01,sum=  2.5627807148368471E+00
+ +check[flx_h_pl        ] max=  1.1002449397299904E-01,min= -1.0379423223736732E-01,sum=  2.3428578735122479E-02
+ +check[GRD_xc          ] max=  6.3711740974481208E+06,min= -2.8421843880731151E+06,sum=  2.0008127660775812E+13
+ +check[GRD_xc_pl       ] max=  6.3711707368004546E+06,min= -6.3711702446065033E+06,sum= -5.2402711763852555E+05
+ +check[rhog_mean       ] max=  1.3664531579209602E+00,min=  3.0688241919459083E-02,sum=  3.0079615977439255E+05
+ +check[rhog_mean_pl    ] max=  1.3664531579209602E+00,min=  3.0688131204860365E-02,sum=  2.1686973266477614E+02
+ +check[rhogvx          ] max=  2.4807620495454326E+01,min= -2.6743430307618826E+01,sum= -7.2284486916298035E+05
+ +check[rhogvx_pl       ] max=  2.3291561831945440E+01,min= -1.7023283571413913E+01,sum=  7.6579748418940346E+02
+ +check[rhogvy          ] max=  3.6016622784129858E+01,min= -3.3418704823922688E+01,sum=  8.9473900044437428E+05
+ +check[rhogvy_pl       ] max=  8.7323000593655760E+00,min= -9.4486634372500102E+00,sum=  1.2151517834227268E+03
+ +check[rhogvz          ] max=  2.3202617358688446E+01,min= -2.4977800359078525E+01,sum=  1.1280540293791931E+05
+ +check[rhogvz_pl       ] max=  1.6015604765102806E-01,min= -1.3081853271482025E-01,sum=  1.6285945760677518E+00
+ +check[GRD_xr          ] max=  4.0592444288400000E+13,min= -9.9998999999999996E+30,sum= -1.5719842799999647E+34
+ +check[GRD_xr_pl       ] max=  6.3711570243787766E+06,min= -9.9998999999999996E+30,sum= -5.9999399999999993E+31
+ +check[GMTR_p          ] max=  3.1937623126446486E+09,min= -1.0000000000000000E+00,sum=  5.2568771941580258E+13
+ +check[GMTR_p_pl       ] max=  2.6945919723895960E+09,min= -1.0000000000000000E+00,sum=  3.0761871439307461E+10
+ +check[GMTR_t          ] max=  1.5988904134747729E+09,min=  0.0000000000000000E+00,sum=  5.1787428410119117E+13
+ +check[GMTR_t_pl       ] max=  1.9722549493151660E+09,min=  0.0000000000000000E+00,sum=  1.9722549503025471E+10
+ +check[GMTR_a          ] max=  6.3362880879999531E+04,min= -6.0857794015098916E+04,sum=  7.9258961023823655E+08
+ +check[GMTR_a_pl       ] max=  5.7873883883004550E+04,min= -5.7872753043726123E+04,sum= -4.3064210331067443E-07
+ ### Output ###
+ +check[flx_h           ] max=  1.5610710092943020E-01,min= -1.5670677438306818E-01,sum=  2.5627807148368471E+00
+ +check[flx_h_pl        ] max=  1.1002449397299904E-01,min= -1.0379423223736732E-01,sum=  2.3428578735122479E-02
+ +check[GRD_xc          ] max=  6.3711740974481208E+06,min= -2.8421843880731151E+06,sum=  2.0008127660775812E+13
+ +check[GRD_xc_pl       ] max=  6.3711707368004546E+06,min= -6.3711702446065033E+06,sum= -5.2402711763852555E+05
+ ### Validation : grid-by-grid diff ###
+ +check[check_flx_h     ] max=  0.0000000000000000E+00,min=  0.0000000000000000E+00,sum=  0.0000000000000000E+00
+ +check[check_flx_h_pl  ] max=  0.0000000000000000E+00,min=  0.0000000000000000E+00,sum=  0.0000000000000000E+00
+ +check[check_GRD_xc    ] max=  0.0000000000000000E+00,min=  0.0000000000000000E+00,sum=  0.0000000000000000E+00
+ +check[check_GRD_xc_pl ] max=  0.0000000000000000E+00,min=  0.0000000000000000E+00,sum=  0.0000000000000000E+00
+ *** Finish kernel
+\end{LstLog}
+
+Check the lines below \src{``Validation : grid-by-grid diff''} line,
+that shows difference between calculated output array and
+pre-calculated reference array.
+These should be zero or enough small to be acceptable.
+
+There are sample output log files in \file{reference/}
+in each kernel program directory, for reference purpose.
+
+\subsection{Sample of perfomance result}
+
+Here's an example of the performance result part of the log output.
+Below is an example executed with the machine environment described in \autoref{s:measuring_env}.
+%
+Note that in this program kernel part is iterated one time.
+
+\begin{LstLog}
+ *** Computational Time Report
+ *** ID=001 : MAIN_dyn_horiz_adv_flux          T=     0.040 N=      1
+ *** ID=002 : ____horizontal_adv_flux          T=     0.040 N=      1
+\end{LstLog}

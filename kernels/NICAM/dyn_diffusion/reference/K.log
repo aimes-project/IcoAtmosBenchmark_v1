@@ -1,0 +1,22 @@
+ [KERNEL] dyn_diffusion
+ *** Start  initialize
+ *** Finish initialize
+ *** Start  kernel
+ ### Input ###
+ +check[check_dscl      ] max=  6.1941315670898290E-08,min= -7.0374144752795210E-08,sum= -2.7407850230956760E-07
+ +check[check_dscl_pl   ] max=  2.2139244811324830E-08,min= -6.0170678327656930E-11,sum=  1.8274579608905820E-07
+ +check[scl             ] max=  1.6578626530298900E-11,min= -1.2670212860993860E-11,sum= -2.0289014286352530E-10
+ +check[scl_pl          ] max=  1.9358849576453660E-11,min= -8.2853331106472900E-12,sum=  1.1445754720677460E-09
+ +check[kh              ] max=  2.8341305529772250E+12,min=  6.7659597088284980E+10,sum=  6.0439053980500510E+17
+ +check[kh_pl           ] max=  2.8334094314435530E+12,min=  6.7659597088284980E+10,sum=  4.3486317454839530E+14
+ ### Output ###
+ +check[dscl            ] max=  6.1941315670898300E-08,min= -7.0374144752795210E-08,sum= -2.7407850230956760E-07
+ +check[dscl_pl         ] max=  2.2139244811324830E-08,min= -6.0170678327656960E-11,sum=  1.8274579608905820E-07
+ ### Varidation by diff ###
+ +check[check_dscl      ] max=  1.3234889800848440E-23,min= -1.3234889800848440E-23,sum= -2.4553449071472200E-23
+ +check[check_dscl_pl   ] max=  3.3087224502121110E-24,min= -3.3087224502121110E-24,sum=  9.8550815167450560E-26
+ *** Finish kernel
+
+ *** Computational Time Report
+ *** ID=001 : MAIN_dyn_diffusion               T=     0.060 N=      1
+ *** ID=002 : OPRT_diffusion                   T=     0.060 N=      1

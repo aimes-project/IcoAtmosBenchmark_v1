@@ -1,0 +1,86 @@
+%#BIBTEX latexmk
+%#! latexmk IAB_NICAM_kernels
+\documentclass[a4paper,twoside,openright]{report}
+% \title{{\vspace{2cm}{\Large IcoAtmosBenchmark \\ NICAM kernels} }}
+% \author{{\vspace{2cm}{SPPEXA/AIMES Benchmarking team}}}
+\title{{{\Large IcoAtmosBenchmark \\ NICAM kernels} }}
+\author{{{SPPEXA/AIMES Benchmarking team}}}
+\date{\today}
+\RequirePackage[l2tabu, orthodox]{nag}
+
+\usepackage[pdftex]{graphicx}
+\usepackage[pdftex,usenames,dvipsnames]{color}
+\usepackage[pdftex,pdfusetitle]{hyperref}
+\usepackage[stretch=30,shrink=20]{microtype}
+% \usepackage{times}
+% \usepackage{bookman}
+% \usepackage{lmodern}
+ \usepackage{tgtermes}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath}
+% \usepackage{ascmac}
+\usepackage{bm}
+% \usepackage{alltt}
+\usepackage[round]{natbib}
+\usepackage{tabularx}
+\usepackage{color}
+\usepackage{colortbl}
+\usepackage{fancybox}
+\usepackage{url}
+\usepackage{xspace}
+\usepackage{lscape}
+\usepackage{listings}
+\usepackage[section]{placeins}
+\usepackage{flafter}
+\usepackage{siunitx}
+\usepackage{subcaption}
+% \usepackage{pxjahyper}
+\hypersetup{% options for hyperref
+ bookmarksopen=true,
+ bookmarksnumbered=true,
+ bookmarksdepth=subsubsection,
+ colorlinks=true,
+ linkcolor=Blue,
+ citecolor=Brown,
+ urlcolor=Red,
+}
+
+
+
+\usepackage[top=30mm,bottom=35mm,left=30mm,right=30mm]{geometry}
+\setcounter{tocdepth}{3}
+\setcounter{secnumdepth}{3}
+\renewcommand{\thesubsubsection}{(\arabic{subsubsection})}
+\renewcommand{\thefootnote}{*\arabic{footnote})}
+
+\input{local_macro}
+
+
+\begin{document}
+\maketitle
+\tableofcontents
+
+\cleardoublepage
+
+\chapter{Brief introduction of NICAM} \label{chap:intronicam}
+\input{20_intro_nicam}
+\clearpage
+
+\chapter{Description of each kernel} \label{chap:kernelnicam}
+\input{30_overview}
+\input{31_diffusion}
+\input{32_divdamp}
+\input{33_vi_rhow_solver}
+\input{34_vert_adv_limiter}
+\input{35_horiz_adv_flux}
+\input{36_horiz_adv_limiter}
+\input{37_metrics}
+\input{38_communication}
+\clearpage
+
+\bibliographystyle{unsrtnat}
+\bibliography{reference}
+
+\input{back_matter}
+
+\end{document}

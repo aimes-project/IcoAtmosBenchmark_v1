@@ -1,0 +1,2671 @@
+\section{\src{dyn_metrics}}
+\label{dyn_metrics}
+
+\subsection{Description}
+
+Kernel \src{dyn_metrics} gathers calcuration part of various metric
+terms in several subroutines listed below:
+\begin{itemize}
+ \item \src{GMTR_p_setup}
+ \item \src{GMTR_t_setup}
+ \item \src{GMTR_a_setup}
+ \item \src{OPRT_divergence_setup}
+ \item \src{OPRT_rotation_setup}
+ \item \src{OPRT_gradient_setup}
+ \item \src{OPRT_laplacian_setup}
+ \item \src{OPRT_diffusion_setup}
+\end{itemize}
+%
+These subroutines are defined as the same name in module \src{mod_gmtr}
+and \src{mod_oprt} in original \NICAM.
+
+\subsection{Discretization and code}
+
+
+
+\subsubsection{\src{GMTR_p_setup}}
+
+\src{mod_gmtr} contains public objects related to the metrics.
+%
+This subroutine is to setup metrics for the cell point.
+
+Argument lists and local variables definition part of this subroutine is
+as follows.
+
+\begin{LstF90}
+subroutine GMTR_p_setup( &
+     GRD_x,  GRD_x_pl,  &
+     GRD_xt, GRD_xt_pl, &
+     GRD_s,  GRD_s_pl,  &
+     GMTR_p, GMTR_p_pl, &
+     GRD_rscale         )
+!ESC!    use mod_adm, only: &
+!ESC!       ADM_nxyz,     &
+!ESC!       ADM_have_pl,  &
+!ESC!       ADM_have_sgp, &
+!ESC!       ADM_vlink,    &
+!ESC!       ADM_gmin,     &
+!ESC!       ADM_gmax,     &
+!ESC!       ADM_gslf_pl
+!ESC!    use mod_grd, only: &
+!ESC!       GRD_XDIR,               &
+!ESC!       GRD_YDIR,               &
+!ESC!       GRD_ZDIR,               &
+!ESC!       GRD_LON,                &
+!ESC!       GRD_grid_type_on_plane, &
+!ESC!       GRD_grid_type
+  use mod_vector, only: &
+     VECTR_triangle,      &
+     VECTR_triangle_plane
+  implicit none
+
+  real(RP), intent(in)  :: GRD_x    (ADM_gall   ,k0,ADM_lall   ,      ADM_nxyz)
+  real(RP), intent(in)  :: GRD_x_pl (ADM_gall_pl,k0,ADM_lall_pl,      ADM_nxyz)
+  real(RP), intent(in)  :: GRD_xt   (ADM_gall   ,k0,ADM_lall   ,TI:TJ,ADM_nxyz)
+  real(RP), intent(in)  :: GRD_xt_pl(ADM_gall_pl,k0,ADM_lall_pl,      ADM_nxyz)
+  real(RP), intent(in)  :: GRD_s    (ADM_gall   ,k0,ADM_lall   ,      2)
+  real(RP), intent(in)  :: GRD_s_pl (ADM_gall_pl,k0,ADM_lall_pl,      2)
+  real(RP), intent(out) :: GMTR_p   (ADM_gall   ,k0,ADM_lall   ,GMTR_p_nmax)
+  real(RP), intent(out) :: GMTR_p_pl(ADM_gall_pl,k0,ADM_lall_pl,GMTR_p_nmax)
+  real(RP), intent(in)  :: GRD_rscale
+
+  real(RP) :: wk   (ADM_nxyz,0:7,ADM_gall)
+  real(RP) :: wk_pl(ADM_nxyz,0:ADM_vlink+1)
+
+  real(RP) :: area
+  real(RP) :: cos_lambda, sin_lambda
+
+  integer  :: ij
+  integer  :: ip1j, ijp1, ip1jp1
+  integer  :: im1j, ijm1, im1jm1
+
+  integer  :: i, j, l, d, v, n
+  !---------------------------------------------------------------------------
+
+\end{LstF90}
+%
+\src{GRD_x} and \src{GRD_xt} are the coordinates in 3-D Cartesian of the center points
+and the vertex points of control cell, respectively.
+%
+And \src{GRD_s} is the coordinates in the spherical coordinate on the
+planet i.e. latitude and longitude in radian.
+%
+Those with suffix \src{_pl} are for the pole region.
+%
+These coodinate values are given as arguments, read from input data file
+in this kernel proguram.
+%
+\src{GMTR_p} and \src{GMTR_p_pl} are the metrics this subroutine
+calculates for normal region and pole region, respectively.
+%
+The last dimension of these have the size of \src{GMTR_p_nmax}, each
+element of this dimension specify the kind of various metrics.
+%
+For example, \src{GMTR_p(:,:,:,GMTR_p_AREA)} means area of the hexagonal controll cell
+%
+\src{GRD_rscale} is a scaling factor for the radius of the sphere, and
+set as \src{6.37122E+6_RP} [m] for this kernel program in \file{problem_size.inc}.
+
+There is one long $l$-loop in this subroutine, divided to 3 sections.
+The first section is as follows.
+
+\begin{LstF90}[name=GMTR_p_setup,firstnumber=last]
+  !if( IO_L ) write(IO_FID_LOG,*) '*** setup metrics for hexagonal/pentagonal mesh'
+
+  GMTR_p   (:,:,:,:)   = 0.0_RP
+  GMTR_p_pl(:,:,:,:)   = 0.0_RP
+
+  do l = 1, ADM_lall
+     do j = ADM_gmin, ADM_gmax
+     do i = ADM_gmin, ADM_gmax
+        ij     = suf(i  ,j  )
+        ip1j   = suf(i+1,j  )
+        ip1jp1 = suf(i+1,j+1)
+        ijp1   = suf(i  ,j+1)
+        im1j   = suf(i-1,j  )
+        im1jm1 = suf(i-1,j-1)
+        ijm1   = suf(i  ,j-1)
+
+        !--- prepare 1 center and 6 vertices
+        do d = 1, ADM_nxyz
+           wk(d,0,ij) = GRD_x(ij,k0,l,d)
+
+           wk(d,1,ij) = GRD_xt(ijm1  ,k0,l,TJ,d)
+           wk(d,2,ij) = GRD_xt(ij    ,k0,l,TI,d)
+           wk(d,3,ij) = GRD_xt(ij    ,k0,l,TJ,d)
+           wk(d,4,ij) = GRD_xt(im1j  ,k0,l,TI,d)
+           wk(d,5,ij) = GRD_xt(im1jm1,k0,l,TJ,d)
+           wk(d,6,ij) = GRD_xt(im1jm1,k0,l,TI,d)
+           wk(d,7,ij) = wk(d,1,ij)
+        enddo
+     enddo ! i loop
+     enddo ! j loop
+
+     if ( ADM_have_sgp(l) ) then ! pentagon
+        wk(:,6,suf(ADM_gmin,ADM_gmin)) = wk(:,1,suf(ADM_gmin,ADM_gmin))
+        wk(:,7,suf(ADM_gmin,ADM_gmin)) = wk(:,1,suf(ADM_gmin,ADM_gmin))
+     endif
+
+\end{LstF90}
+%
+In this first section, the coordinates of center and 6 vertices of a
+control volume are set to a temporary array \src{wk}.
+%
+\src{ADM_nxyz} is $3$ and the inner-most loop index \src{d} specifies
+$(X,Y,Z)$ direction of 3-D Cartesian coodinates.
+%
+As for the last \src{IF} clause(l.81), if \src{ADM_have_sgp(l)} is true,
+the $l$-th region has the singular point and the control volume of that
+point is not a hexagon but a pentagon.
+
+The second section of the main $l$-loop is as follows.
+
+\begin{LstF90}[name=GMTR_p_setup,firstnumber=last]
+     !--- calc control area
+     if ( GRD_grid_type == GRD_grid_type_on_plane ) then
+        do j = ADM_gmin, ADM_gmax
+        do i = ADM_gmin, ADM_gmax
+           ij = suf(i,j)
+
+           area = 0.0_RP
+           do v = 1, 6
+              area = area + VECTR_triangle_plane( wk(:,0,ij), wk(:,v,ij), wk(:,v+1,ij) )
+           enddo
+
+           GMTR_p(ij,k0,l,GMTR_p_AREA)  = area
+           GMTR_p(ij,k0,l,GMTR_p_RAREA) = 1.0_RP / GMTR_p(ij,k0,l,GMTR_p_AREA)
+
+        enddo ! i loop
+        enddo ! j loop
+     else
+        do j = ADM_gmin, ADM_gmax
+        do i = ADM_gmin, ADM_gmax
+           ij = suf(i,j)
+
+           wk(:,:,ij) = wk(:,:,ij) / GRD_rscale
+
+           area = 0.0_RP
+           do v = 1, 6
+              area = area + VECTR_triangle( wk(:,0,ij), wk(:,v,ij), wk(:,v+1,ij), GMTR_polygon_type, GRD_rscale )
+           enddo
+
+           GMTR_p(ij,k0,l,GMTR_p_AREA)  = area
+           GMTR_p(ij,k0,l,GMTR_p_RAREA) = 1.0_RP / GMTR_p(ij,k0,l,GMTR_p_AREA)
+
+        enddo ! i loop
+        enddo ! j loop
+     endif
+
+\end{LstF90}
+%
+This section calculates the area size of control volume, by summing up 6
+triangles that consist of the hexagon.
+%
+\src{GMTR_p(:,:,:,GMTR_p_RAREA)} is a reciprocal of the size of area.
+
+The last part of this main $l$-loop is as follows.
+
+\begin{LstF90}[name=GMTR_p_setup,firstnumber=last]
+     !--- calc coefficient between xyz <-> latlon
+     if ( GRD_grid_type == GRD_grid_type_on_plane ) then
+        GMTR_p(:,k0,l,GMTR_p_IX) = 1.0_RP
+        GMTR_p(:,k0,l,GMTR_p_IY) = 0.0_RP
+        GMTR_p(:,k0,l,GMTR_p_IZ) = 0.0_RP
+        GMTR_p(:,k0,l,GMTR_p_JX) = 0.0_RP
+        GMTR_p(:,k0,l,GMTR_p_JY) = 1.0_RP
+        GMTR_p(:,k0,l,GMTR_p_JZ) = 0.0_RP
+     else
+        do j = ADM_gmin, ADM_gmax
+        do i = ADM_gmin, ADM_gmax
+           ij = suf(i,j)
+
+           sin_lambda = sin( GRD_s(ij,k0,l,GRD_LON) )
+           cos_lambda = cos( GRD_s(ij,k0,l,GRD_LON) )
+
+           GMTR_p(ij,k0,l,GMTR_p_IX) = -sin_lambda
+           GMTR_p(ij,k0,l,GMTR_p_IY) =  cos_lambda
+           GMTR_p(ij,k0,l,GMTR_p_IZ) = 0.0_RP
+           GMTR_p(ij,k0,l,GMTR_p_JX) = -( GRD_x(ij,k0,l,ZDIR) * cos_lambda ) / GRD_rscale
+           GMTR_p(ij,k0,l,GMTR_p_JY) = -( GRD_x(ij,k0,l,ZDIR) * sin_lambda ) / GRD_rscale
+           GMTR_p(ij,k0,l,GMTR_p_JZ) =  ( GRD_x(ij,k0,l,XDIR) * cos_lambda &
+                                        + GRD_x(ij,k0,l,YDIR) * sin_lambda ) / GRD_rscale
+        enddo ! i loop
+        enddo ! j loop
+     endif
+  enddo ! l loop
+
+\end{LstF90}
+%
+This section calculates the coefficients used by conversion from 3-D
+Cartesian coordinates to the spherical coordinates and \textit{vice versa}.
+%
+Note that \src{GRD_grid_type == GRD_grid_type_on_plane} is set as false
+for this kernel program in \file{problem_size.inc}.
+
+
+The remaining part of this subroutine is as follows.
+
+\begin{LstF90}[name=GMTR_p_setup,firstnumber=last]
+  if ( ADM_have_pl ) then
+     n = ADM_gslf_pl
+
+     do l = 1, ADM_lall_pl
+        !--- prepare 1 center and * vertices
+        do d = 1, ADM_nxyz
+           wk_pl(d,0) = GRD_x_pl(n,k0,l,d)
+           do v = 1, ADM_vlink ! (ICO=5)
+              wk_pl(d,v) = GRD_xt_pl(v+1,k0,l,d)
+           enddo
+           wk_pl(d,ADM_vlink+1) = wk_pl(d,1)
+        enddo
+
+        wk_pl(:,:) = wk_pl(:,:) / GRD_rscale
+
+        !--- calc control area
+        area = 0.0_RP
+        do v = 1, ADM_vlink ! (ICO=5)
+           area = area + VECTR_triangle( wk_pl(:,0), wk_pl(:,v), wk_pl(:,v+1), GMTR_polygon_type, GRD_rscale )
+        enddo
+
+        GMTR_p_pl(n,k0,l,GMTR_p_AREA)  = area
+        GMTR_p_pl(n,k0,l,GMTR_p_RAREA) = 1.0_RP / GMTR_p_pl(n,k0,l,GMTR_p_AREA)
+
+        !--- calc coefficient between xyz <-> latlon
+        sin_lambda = sin( GRD_s_pl(n,k0,l,GRD_LON) )
+        cos_lambda = cos( GRD_s_pl(n,k0,l,GRD_LON) )
+
+        GMTR_p_pl(n,k0,l,GMTR_p_IX) = -sin_lambda
+        GMTR_p_pl(n,k0,l,GMTR_p_IY) =  cos_lambda
+        GMTR_p_pl(n,k0,l,GMTR_p_IZ) = 0.0_RP
+        GMTR_p_pl(n,k0,l,GMTR_p_JX) = -( GRD_x_pl(n,k0,l,ZDIR) * cos_lambda ) / GRD_rscale
+        GMTR_p_pl(n,k0,l,GMTR_p_JY) = -( GRD_x_pl(n,k0,l,ZDIR) * sin_lambda ) / GRD_rscale
+        GMTR_p_pl(n,k0,l,GMTR_p_JZ) =  ( GRD_x_pl(n,k0,l,XDIR) * cos_lambda &
+                                       + GRD_x_pl(n,k0,l,YDIR) * sin_lambda ) / GRD_rscale
+     enddo ! l loop
+  endif
+
+  return
+end subroutine GMTR_p_setup
+\end{LstF90}
+%
+This part is to calculates for the pole region.
+%
+Note that the pole region is a pentagon.
+
+
+
+\subsubsection{\src{GMTR_t_setup}}
+
+This subroutine is to setup metrics for the cell vertices or the triangles.
+
+Argument lists and local variables definition part of this subroutine is
+as follows.
+
+\begin{LstF90}[name=GMTR_t_setup]
+subroutine GMTR_t_setup( &
+     GRD_x,  GRD_x_pl,  &
+     GRD_xt, GRD_xt_pl, &
+     GMTR_t, GMTR_t_pl, &
+     GRD_rscale         )
+!ESC!    use mod_adm, only: &
+!ESC!       ADM_nxyz,     &
+!ESC!       ADM_have_pl,  &
+!ESC!       ADM_have_sgp, &
+!ESC!       ADM_gmin,     &
+!ESC!       ADM_gmax,     &
+!ESC!       ADM_gslf_pl,  &
+!ESC!       ADM_gmin_pl,  &
+!ESC!       ADM_gmax_pl
+!ESC!    use mod_grd, only: &
+!ESC!       GRD_grid_type_on_plane, &
+!ESC!       GRD_grid_type
+  use mod_vector, only: &
+     VECTR_triangle,      &
+     VECTR_triangle_plane
+  implicit none
+
+  real(RP), intent(in)  :: GRD_x    (ADM_gall   ,k0,ADM_lall   ,              ADM_nxyz)
+  real(RP), intent(in)  :: GRD_x_pl (ADM_gall_pl,k0,ADM_lall_pl,              ADM_nxyz)
+  real(RP), intent(in)  :: GRD_xt   (ADM_gall   ,k0,ADM_lall   ,TI:TJ,ADM_nxyz)
+  real(RP), intent(in)  :: GRD_xt_pl(ADM_gall_pl,k0,ADM_lall_pl,              ADM_nxyz)
+  real(RP), intent(out) :: GMTR_t   (ADM_gall   ,k0,ADM_lall   ,TI:TJ,GMTR_t_nmax)
+  real(RP), intent(out) :: GMTR_t_pl(ADM_gall_pl,k0,ADM_lall_pl,              GMTR_t_nmax)
+  real(RP), intent(in)  :: GRD_rscale
+
+  real(RP) :: wk   (ADM_nxyz,0:3,ADM_gall,TI:TJ)
+  real(RP) :: wk_pl(ADM_nxyz,0:3)
+
+  real(RP) :: area, area1, area2, area3
+
+  integer  :: ij
+  integer  :: ip1j, ijp1, ip1jp1
+
+  integer  :: i, j, l, d, v, n, t
+  !---------------------------------------------------------------------------
+
+\end{LstF90}
+%
+Input arguments are the same with the previous \src{GMTR_p_setup}.
+%
+\src{GMTR_t} and \src{GMTR_t_pl} are the metrics for the vertex points of control cell
+for the normal region and the pole region, respectively.
+%
+In the last dimension of these arrays whose size is \src{GMTR_t_nmax},
+each element specifies the kind of various metrics.
+%
+For example, \src{GMTR_t(:,:,:,:,GMTR_t_AREA)} means the area of the upward and downward triangle,
+which contains vertex points of control cell as the gravitational center.
+
+Main part of this subroutine is a single $l$-loop, divided to two sections.
+The first section is as follows.
+
+\begin{LstF90}[name=GMTR_t_setup,firstnumber=last]
+  !if( IO_L ) write(IO_FID_LOG,*) '*** setup metrics for triangle mesh'
+
+  GMTR_t   (:,:,:,:,:) = 0.0_RP
+  GMTR_t_pl(:,:,:,:)   = 0.0_RP
+
+  do l = 1,ADM_lall
+     do j = ADM_gmin-1, ADM_gmax
+     do i = ADM_gmin-1, ADM_gmax
+        ij     = suf(i  ,j  )
+        ip1j   = suf(i+1,j  )
+        ip1jp1 = suf(i+1,j+1)
+        ijp1   = suf(i  ,j+1)
+
+        !--- prepare 1 center and 3 vertices for 2 triangles
+        do d = 1, ADM_nxyz
+           wk(d,0,ij,TI) = GRD_xt(ij,k0,l,TI,d)
+
+           wk(d,1,ij,TI) = GRD_x(ij    ,k0,l,d)
+           wk(d,2,ij,TI) = GRD_x(ip1j  ,k0,l,d)
+           wk(d,3,ij,TI) = GRD_x(ip1jp1,k0,l,d)
+
+           wk(d,0,ij,TJ) = GRD_xt(ij,k0,l,TJ,d)
+
+           wk(d,1,ij,TJ) = GRD_x(ij    ,k0,l,d)
+           wk(d,2,ij,TJ) = GRD_x(ip1jp1,k0,l,d)
+           wk(d,3,ij,TJ) = GRD_x(ijp1  ,k0,l,d)
+        enddo
+     enddo
+     enddo
+
+\end{LstF90}
+%
+In this section, coordinates of the center and three vertices for two
+triangles represents.
+%
+The meaning of \src{ADM_nxyz} and the loop index \src{d} are the same
+with them in the previous subroutine \src{GMTR_p_setup}.
+
+The second section is as follows.
+
+\begin{LstF90}[name=GMTR_t_setup,firstnumber=last]
+     !--- treat unused triangle
+     wk(:,:,suf(ADM_gmax,ADM_gmin-1),TI) = wk(:,:,suf(ADM_gmax,ADM_gmin-1),TJ)
+     wk(:,:,suf(ADM_gmin-1,ADM_gmax),TJ) = wk(:,:,suf(ADM_gmin-1,ADM_gmax),TI)
+
+     if ( ADM_have_sgp(l) ) then ! pentagon
+        wk(:,:,suf(ADM_gmin-1,ADM_gmin-1),TI) = wk(:,:,suf(ADM_gmin,ADM_gmin-1),TJ)
+     endif
+
+     if ( GRD_grid_type == GRD_grid_type_on_plane ) then
+        do t = TI,TJ
+        do j = ADM_gmin-1, ADM_gmax
+        do i = ADM_gmin-1, ADM_gmax
+           ij = suf(i,j)
+
+           area1 = VECTR_triangle_plane( wk(:,0,ij,t), wk(:,2,ij,t), wk(:,3,ij,t) )
+           area2 = VECTR_triangle_plane( wk(:,0,ij,t), wk(:,3,ij,t), wk(:,1,ij,t) )
+           area3 = VECTR_triangle_plane( wk(:,0,ij,t), wk(:,1,ij,t), wk(:,2,ij,t) )
+
+           area = area1 + area2 + area3
+
+           GMTR_t(ij,k0,l,t,GMTR_t_AREA)  = area
+           GMTR_t(ij,k0,l,t,GMTR_t_RAREA) = 1.0_RP / area
+
+           GMTR_t(ij,k0,l,t,GMTR_t_W1)    = area1 / area
+           GMTR_t(ij,k0,l,t,GMTR_t_W2)    = area2 / area
+           GMTR_t(ij,k0,l,t,GMTR_t_W3)    = area3 / area
+        enddo
+        enddo
+        enddo
+     else
+        do t = TI,TJ
+        do j = ADM_gmin-1, ADM_gmax
+        do i = ADM_gmin-1, ADM_gmax
+           ij = suf(i,j)
+
+           wk(:,:,ij,t) = wk(:,:,ij,t) / GRD_rscale
+
+           area1 = VECTR_triangle( wk(:,0,ij,t), wk(:,2,ij,t), wk(:,3,ij,t), GMTR_polygon_type, GRD_rscale )
+           area2 = VECTR_triangle( wk(:,0,ij,t), wk(:,3,ij,t), wk(:,1,ij,t), GMTR_polygon_type, GRD_rscale )
+           area3 = VECTR_triangle( wk(:,0,ij,t), wk(:,1,ij,t), wk(:,2,ij,t), GMTR_polygon_type, GRD_rscale )
+
+           area = area1 + area2 + area3
+
+           GMTR_t(ij,k0,l,t,GMTR_t_AREA)  = area
+           GMTR_t(ij,k0,l,t,GMTR_t_RAREA) = 1.0_RP / area
+
+           GMTR_t(ij,k0,l,t,GMTR_t_W1)    = area1 / area
+           GMTR_t(ij,k0,l,t,GMTR_t_W2)    = area2 / area
+           GMTR_t(ij,k0,l,t,GMTR_t_W3)    = area3 / area
+        enddo
+        enddo
+        enddo
+     endif
+
+  enddo
+
+\end{LstF90}
+%
+This section calculates an area of the triangle each triangle point
+represents.
+%
+Note that \src{GRD_grid_type == GRD_grid_type_on_plane} is false in this
+kernel program.
+%
+The triangle is divided to three small triangles by connecting three
+vertices and the triangle point.
+%
+The area of whole triangle is calculated by summing up these three small
+triangles.
+%
+\src{GMTR_t(:,:,:,:,GMTR_t_RAREA)} means the reciprocal of the area of
+whole triangle, and \src{GMTR_t(:,:,:,:,GMTR_t_W1)} etc. are the area fraction of
+each of three small triangles. These are used for the triangle linear interpolation from
+the grid point (the center of control cell) to the vertex point.
+
+The remaining part of this subroutine is for the pole region and is as
+follows.
+
+\begin{LstF90}[name=GMTR_t_setup,firstnumber=last]
+  if ( ADM_have_pl ) then
+     n = ADM_gslf_pl
+
+     do l = 1,ADM_lall_pl
+        do v = ADM_gmin_pl, ADM_gmax_pl
+           ij   = v
+           ijp1 = v + 1
+           if( ijp1 == ADM_gmax_pl+1 ) ijp1 = ADM_gmin_pl
+
+           do d = 1, ADM_nxyz
+              wk_pl(d,0) = GRD_xt_pl(ij,k0,l,d)
+
+              wk_pl(d,1) = GRD_x_pl(n   ,k0,l,d)
+              wk_pl(d,2) = GRD_x_pl(ij  ,k0,l,d)
+              wk_pl(d,3) = GRD_x_pl(ijp1,k0,l,d)
+           enddo
+
+           wk_pl(:,:) = wk_pl(:,:) / GRD_rscale
+
+           area1 = VECTR_triangle( wk_pl(:,0), wk_pl(:,2), wk_pl(:,3), GMTR_polygon_type, GRD_rscale )
+           area2 = VECTR_triangle( wk_pl(:,0), wk_pl(:,3), wk_pl(:,1), GMTR_polygon_type, GRD_rscale )
+           area3 = VECTR_triangle( wk_pl(:,0), wk_pl(:,1), wk_pl(:,2), GMTR_polygon_type, GRD_rscale )
+
+           area = area1 + area2 + area3
+
+           GMTR_t_pl(ij,k0,l,GMTR_t_AREA)  = area
+           GMTR_t_pl(ij,k0,l,GMTR_t_RAREA) = 1.0_RP / area
+
+           GMTR_t_pl(ij,k0,l,GMTR_t_W1)    = area1 / area
+           GMTR_t_pl(ij,k0,l,GMTR_t_W2)    = area2 / area
+           GMTR_t_pl(ij,k0,l,GMTR_t_W3)    = area3 / area
+        enddo
+     enddo
+  endif
+
+  return
+end subroutine GMTR_t_setup
+\end{LstF90}
+%
+The procedure of calculation is almost the same with for the normal
+region, but note that for the pole region, there is only one triangle
+point for one grid point, and there is no distinction between \src{TI}
+and \src{TJ}.
+
+
+
+\subsubsection{\src{GMTR_a_setup}}
+
+This subroutine is to setup metrics for the cell edge points or the arcs of triangles.
+
+Argument lists and local variables definition part of this subroutine is
+as follows.
+
+\begin{LstF90}[name=GMTR_a_setup]
+subroutine GMTR_a_setup( &
+     GRD_x,  GRD_x_pl,  &
+     GRD_xt, GRD_xt_pl, &
+     GMTR_a, GMTR_a_pl, &
+     GRD_rscale         )
+!ESC!    use mod_adm, only: &
+!ESC!       ADM_nxyz,     &
+!ESC!       ADM_have_pl,  &
+!ESC!       ADM_have_sgp, &
+!ESC!       ADM_gmin,     &
+!ESC!       ADM_gmax,     &
+!ESC!       ADM_gslf_pl,  &
+!ESC!       ADM_gmin_pl,  &
+!ESC!       ADM_gmax_pl
+!ESC!    use mod_grd, only: &
+!ESC!       GRD_grid_type_on_plane, &
+!ESC!       GRD_grid_type
+  implicit none
+
+  real(RP), intent(in)  :: GRD_x    (ADM_gall   ,k0,ADM_lall   ,              ADM_nxyz)
+  real(RP), intent(in)  :: GRD_x_pl (ADM_gall_pl,k0,ADM_lall_pl,              ADM_nxyz)
+  real(RP), intent(in)  :: GRD_xt   (ADM_gall   ,k0,ADM_lall   ,TI:TJ,ADM_nxyz)
+  real(RP), intent(in)  :: GRD_xt_pl(ADM_gall_pl,k0,ADM_lall_pl,              ADM_nxyz)
+  real(RP), intent(out) :: GMTR_a   (ADM_gall   ,k0,ADM_lall   ,AI:AJ,GMTR_a_nmax   )
+  real(RP), intent(out) :: GMTR_a_pl(ADM_gall_pl,k0,ADM_lall_pl,              GMTR_a_nmax_pl)
+  real(RP), intent(in)  :: GRD_rscale
+
+  real(RP) :: wk   (ADM_nxyz,2,ADM_gall)
+  real(RP) :: wk_pl(ADM_nxyz,2)
+
+  real(RP) :: Tvec(3), Nvec(3)
+
+  integer  :: ij
+  integer  :: ip1j, ijp1, ip1jp1
+  integer  :: im1j, ijm1
+
+  integer  :: i, j, l, d, v, n
+  !---------------------------------------------------------------------------
+
+\end{LstF90}
+%
+Input arguments are the same with the previous \src{GMTR_p_setup}.
+%
+\src{GMTR_a} and \src{GMTR_a_pl} are the metrics for the edge of the triangle or the hexagonal/pentagonal control cell
+for the normal region and the pole region, respectively.
+%
+In the last dimension of these arrays whose size is \src{GMTR_a_nmax},
+each element specifies the kind of various metrics.
+
+Main part of this subroutine is consist of two $l$-loops.
+%
+The first loop is divided by three sections, and is as follows.
+
+\begin{LstF90}[name=GMTR_a_setup,firstnumber=last]
+  !if( IO_L ) write(IO_FID_LOG,*) '*** setup metrics for cell arcs'
+
+  GMTR_a   (:,:,:,:,:) = 0.0_RP
+  GMTR_a_pl(:,:,:,:)   = 0.0_RP
+
+  !--- Triangle
+  do l = 1, ADM_lall
+
+     !--- AI
+     do j = ADM_gmin-1, ADM_gmax+1
+     do i = ADM_gmin-1, ADM_gmax
+        ij   = suf(i  ,j  )
+        ip1j = suf(i+1,j  )
+
+        do d = 1, ADM_nxyz
+           wk(d,1,ij) = GRD_x(ij  ,k0,l,d)
+           wk(d,2,ij) = GRD_x(ip1j,k0,l,d)
+        enddo
+     enddo
+     enddo
+
+     ! treat arc of unused triangle
+     wk(:,1,suf(ADM_gmax  ,ADM_gmin-1)) = GRD_x(suf(ADM_gmax  ,ADM_gmin-1),k0,l,:)
+     wk(:,2,suf(ADM_gmax  ,ADM_gmin-1)) = GRD_x(suf(ADM_gmax  ,ADM_gmin  ),k0,l,:)
+     wk(:,1,suf(ADM_gmin-1,ADM_gmax+1)) = GRD_x(suf(ADM_gmin  ,ADM_gmax+1),k0,l,:)
+     wk(:,2,suf(ADM_gmin-1,ADM_gmax+1)) = GRD_x(suf(ADM_gmin  ,ADM_gmax  ),k0,l,:)
+
+     if ( ADM_have_sgp(l) ) then ! pentagon
+        wk(:,1,suf(ADM_gmin-1,ADM_gmin-1)) = GRD_x(suf(ADM_gmin  ,ADM_gmin-1),k0,l,:)
+        wk(:,2,suf(ADM_gmin-1,ADM_gmin-1)) = GRD_x(suf(ADM_gmin+1,ADM_gmin  ),k0,l,:)
+     endif
+
+     do j = ADM_gmin-1, ADM_gmax+1
+     do i = ADM_gmin-1, ADM_gmax
+        ij = suf(i,j)
+
+        call GMTR_TNvec( Tvec(:), Nvec(:),                            & ! [OUT]
+                         wk(:,1,ij), wk(:,2,ij),                      & ! [IN]
+                         GRD_grid_type, GMTR_polygon_type, GRD_rscale ) ! [IN]
+
+        GMTR_a(ij,k0,l,AI,GMTR_a_TNX) = Nvec(1)
+        GMTR_a(ij,k0,l,AI,GMTR_a_TNY) = Nvec(2)
+        GMTR_a(ij,k0,l,AI,GMTR_a_TNZ) = Nvec(3)
+        GMTR_a(ij,k0,l,AI,GMTR_a_TTX) = Tvec(1)
+        GMTR_a(ij,k0,l,AI,GMTR_a_TTY) = Tvec(2)
+        GMTR_a(ij,k0,l,AI,GMTR_a_TTZ) = Tvec(3)
+     enddo
+     enddo
+
+     !--- AIJ
+     do j = ADM_gmin-1, ADM_gmax
+     do i = ADM_gmin-1, ADM_gmax
+        ij     = suf(i  ,j  )
+        ip1jp1 = suf(i+1,j+1)
+
+        do d = 1, ADM_nxyz
+           wk(d,1,ij) = GRD_x(ij    ,k0,l,d)
+           wk(d,2,ij) = GRD_x(ip1jp1,k0,l,d)
+        enddo
+     enddo
+     enddo
+
+     do j = ADM_gmin-1, ADM_gmax
+     do i = ADM_gmin-1, ADM_gmax
+        ij = suf(i,j)
+
+        call GMTR_TNvec( Tvec(:), Nvec(:),                            & ! [OUT]
+                         wk(:,1,ij), wk(:,2,ij),                      & ! [IN]
+                         GRD_grid_type, GMTR_polygon_type, GRD_rscale ) ! [IN]
+
+        GMTR_a(ij,k0,l,AIJ,GMTR_a_TNX) = Nvec(1)
+        GMTR_a(ij,k0,l,AIJ,GMTR_a_TNY) = Nvec(2)
+        GMTR_a(ij,k0,l,AIJ,GMTR_a_TNZ) = Nvec(3)
+        GMTR_a(ij,k0,l,AIJ,GMTR_a_TTX) = Tvec(1)
+        GMTR_a(ij,k0,l,AIJ,GMTR_a_TTY) = Tvec(2)
+        GMTR_a(ij,k0,l,AIJ,GMTR_a_TTZ) = Tvec(3)
+     enddo
+     enddo
+
+     !--- AJ
+     do j = ADM_gmin-1, ADM_gmax
+     do i = ADM_gmin-1, ADM_gmax+1
+        ij   = suf(i  ,j  )
+        ijp1 = suf(i  ,j+1)
+
+        do d = 1, ADM_nxyz
+           wk(d,1,ij) = GRD_x(ij  ,k0,l,d)
+           wk(d,2,ij) = GRD_x(ijp1,k0,l,d)
+        enddo
+     enddo
+     enddo
+
+     ! treat arc of unused triangle
+     wk(:,1,suf(ADM_gmax+1,ADM_gmin-1)) = GRD_x(suf(ADM_gmax+1,ADM_gmin),k0,l,:)
+     wk(:,2,suf(ADM_gmax+1,ADM_gmin-1)) = GRD_x(suf(ADM_gmax  ,ADM_gmin),k0,l,:)
+     wk(:,1,suf(ADM_gmin-1,ADM_gmax  )) = GRD_x(suf(ADM_gmin-1,ADM_gmax),k0,l,:)
+     wk(:,2,suf(ADM_gmin-1,ADM_gmax  )) = GRD_x(suf(ADM_gmin  ,ADM_gmax),k0,l,:)
+
+     do j = ADM_gmin-1, ADM_gmax
+     do i = ADM_gmin-1, ADM_gmax+1
+        ij = suf(i,j)
+
+        call GMTR_TNvec( Tvec(:), Nvec(:),                            & ! [OUT]
+                         wk(:,1,ij), wk(:,2,ij),                      & ! [IN]
+                         GRD_grid_type, GMTR_polygon_type, GRD_rscale ) ! [IN]
+
+        GMTR_a(ij,k0,l,AJ,GMTR_a_TNX) = Nvec(1)
+        GMTR_a(ij,k0,l,AJ,GMTR_a_TNY) = Nvec(2)
+        GMTR_a(ij,k0,l,AJ,GMTR_a_TNZ) = Nvec(3)
+        GMTR_a(ij,k0,l,AJ,GMTR_a_TTX) = Tvec(1)
+        GMTR_a(ij,k0,l,AJ,GMTR_a_TTY) = Tvec(2)
+        GMTR_a(ij,k0,l,AJ,GMTR_a_TTZ) = Tvec(3)
+     enddo
+     enddo
+
+  enddo ! l loop
+\end{LstF90}
+%
+These three sections calculate the metrics for the edge points of three arcs of triangle
+represented by \src{AI}, \src{AIJ} and \src{AJ}, respectively.
+%
+After setting the coordinates of two endpoints of the arc (\src{wk}),
+subroutine \src{GMTR_TNvec} calculates a normal vector and a tangent vector of the edge.
+
+The second loop is alose divided by three sections, and is as follows.
+
+\begin{LstF90}[name=GMTR_a_setup,firstnumber=last]
+  !--- Hexagon/Pentagon
+  do l = 1, ADM_lall
+
+     !--- AI
+     do j = ADM_gmin,   ADM_gmax
+     do i = ADM_gmin-1, ADM_gmax
+        ij   = suf(i  ,j  )
+        ijm1 = suf(i  ,j-1)
+
+        do d = 1, ADM_nxyz
+           wk(d,1,ij) = GRD_xt(ij  ,k0,l,TI,d)
+           wk(d,2,ij) = GRD_xt(ijm1,k0,l,TJ,d)
+        enddo
+     enddo
+     enddo
+
+     do j = ADM_gmin,   ADM_gmax
+     do i = ADM_gmin-1, ADM_gmax
+        ij = suf(i,j)
+
+        call GMTR_TNvec( Tvec(:), Nvec(:),                            & ! [OUT]
+                         wk(:,1,ij), wk(:,2,ij),                      & ! [IN]
+                         GRD_grid_type, GMTR_polygon_type, GRD_rscale ) ! [IN]
+
+        GMTR_a(ij,k0,l,AI,GMTR_a_HNX) = Nvec(1)
+        GMTR_a(ij,k0,l,AI,GMTR_a_HNY) = Nvec(2)
+        GMTR_a(ij,k0,l,AI,GMTR_a_HNZ) = Nvec(3)
+        GMTR_a(ij,k0,l,AI,GMTR_a_HTX) = Tvec(1)
+        GMTR_a(ij,k0,l,AI,GMTR_a_HTY) = Tvec(2)
+        GMTR_a(ij,k0,l,AI,GMTR_a_HTZ) = Tvec(3)
+     enddo
+     enddo
+
+     !--- AIJ
+     do j = ADM_gmin-1, ADM_gmax
+     do i = ADM_gmin-1, ADM_gmax
+        ij   = suf(i  ,j  )
+
+        do d = 1, ADM_nxyz
+           wk(d,1,ij) = GRD_xt(ij  ,k0,l,TJ,d)
+           wk(d,2,ij) = GRD_xt(ij  ,k0,l,TI,d)
+        enddo
+     enddo
+     enddo
+
+     ! treat arc of unused hexagon
+     wk(:,1,suf(ADM_gmax  ,ADM_gmin-1)) = GRD_xt(suf(ADM_gmax  ,ADM_gmin-1),k0,l,TJ,:)
+     wk(:,2,suf(ADM_gmax  ,ADM_gmin-1)) = GRD_xt(suf(ADM_gmax  ,ADM_gmin  ),k0,l,TI,:)
+     wk(:,1,suf(ADM_gmin-1,ADM_gmax  )) = GRD_xt(suf(ADM_gmin  ,ADM_gmax  ),k0,l,TJ,:)
+     wk(:,2,suf(ADM_gmin-1,ADM_gmax  )) = GRD_xt(suf(ADM_gmin-1,ADM_gmax  ),k0,l,TI,:)
+
+     do j = ADM_gmin-1, ADM_gmax
+     do i = ADM_gmin-1, ADM_gmax
+        ij = suf(i,j)
+
+        call GMTR_TNvec( Tvec(:), Nvec(:),                            & ! [OUT]
+                         wk(:,1,ij), wk(:,2,ij),                      & ! [IN]
+                         GRD_grid_type, GMTR_polygon_type, GRD_rscale ) ! [IN]
+
+        GMTR_a(ij,k0,l,AIJ,GMTR_a_HNX) = Nvec(1)
+        GMTR_a(ij,k0,l,AIJ,GMTR_a_HNY) = Nvec(2)
+        GMTR_a(ij,k0,l,AIJ,GMTR_a_HNZ) = Nvec(3)
+        GMTR_a(ij,k0,l,AIJ,GMTR_a_HTX) = Tvec(1)
+        GMTR_a(ij,k0,l,AIJ,GMTR_a_HTY) = Tvec(2)
+        GMTR_a(ij,k0,l,AIJ,GMTR_a_HTZ) = Tvec(3)
+     enddo
+     enddo
+
+     !--- AJ
+     do j = ADM_gmin-1, ADM_gmax
+     do i = ADM_gmin,   ADM_gmax
+        ij   = suf(i  ,j  )
+        im1j = suf(i-1,j  )
+
+        do d = 1, ADM_nxyz
+           wk(d,1,ij) = GRD_xt(im1j,k0,l,TI,d)
+           wk(d,2,ij) = GRD_xt(ij  ,k0,l,TJ,d)
+        enddo
+     enddo
+     enddo
+
+     if ( ADM_have_sgp(l) ) then ! pentagon
+        wk(:,1,suf(ADM_gmin  ,ADM_gmin-1)) = GRD_xt(suf(ADM_gmin  ,ADM_gmin  ),k0,l,TI,:)
+        wk(:,2,suf(ADM_gmin  ,ADM_gmin-1)) = GRD_xt(suf(ADM_gmin  ,ADM_gmin-1),k0,l,TJ,:)
+     endif
+
+     do j = ADM_gmin-1, ADM_gmax
+     do i = ADM_gmin,   ADM_gmax
+        ij = suf(i,j)
+
+        call GMTR_TNvec( Tvec(:), Nvec(:),                            & ! [OUT]
+                         wk(:,1,ij), wk(:,2,ij),                      & ! [IN]
+                         GRD_grid_type, GMTR_polygon_type, GRD_rscale ) ! [IN]
+
+        GMTR_a(ij,k0,l,AJ,GMTR_a_HNX) = Nvec(1)
+        GMTR_a(ij,k0,l,AJ,GMTR_a_HNY) = Nvec(2)
+        GMTR_a(ij,k0,l,AJ,GMTR_a_HNZ) = Nvec(3)
+        GMTR_a(ij,k0,l,AJ,GMTR_a_HTX) = Tvec(1)
+        GMTR_a(ij,k0,l,AJ,GMTR_a_HTY) = Tvec(2)
+        GMTR_a(ij,k0,l,AJ,GMTR_a_HTZ) = Tvec(3)
+     enddo
+     enddo
+
+  enddo ! l loop
+
+\end{LstF90}
+%
+These three sections also calculate the metrics for the three arc points
+represented by \src{AI}, \src{AIJ} and \src{AJ}, respectively, but
+these sections are for the edges of hexagonal/pentagonal control cell, i.e. the
+line crossing the arc of triangle.
+%
+After setting the coordinates of two vertex points, subroutine
+\src{GMTR_TNvec} calculates a normal vector and a tangent vector of the
+line connecting two endpoints.
+
+The remaining part of this subroutine is for the pole region, and is as
+follows.
+
+\begin{LstF90}[name=GMTR_a_setup,firstnumber=last]
+  if ( ADM_have_pl ) then
+     n = ADM_gslf_pl
+
+     do l = 1, ADM_lall_pl
+
+        !--- Triangle (arc 1)
+        do v = ADM_gmin_pl, ADM_gmax_pl
+           ij = v
+
+           do d = 1, ADM_nxyz
+              wk_pl(d,1) = GRD_x_pl(n ,k0,l,d)
+              wk_pl(d,2) = GRD_x_pl(ij,k0,l,d)
+           enddo
+
+           call GMTR_TNvec( Tvec(:), Nvec(:),                            & ! [OUT]
+                            wk_pl(:,1), wk_pl(:,2),                      & ! [IN]
+                            GRD_grid_type, GMTR_polygon_type, GRD_rscale ) ! [IN]
+
+           GMTR_a_pl(ij,k0,l,GMTR_a_TNX) = Nvec(1)
+           GMTR_a_pl(ij,k0,l,GMTR_a_TNY) = Nvec(2)
+           GMTR_a_pl(ij,k0,l,GMTR_a_TNZ) = Nvec(3)
+           GMTR_a_pl(ij,k0,l,GMTR_a_TTX) = Tvec(1)
+           GMTR_a_pl(ij,k0,l,GMTR_a_TTY) = Tvec(2)
+           GMTR_a_pl(ij,k0,l,GMTR_a_TTZ) = Tvec(3)
+        enddo
+
+        !--- Triangle (arc 2)
+        do v = ADM_gmin_pl, ADM_gmax_pl
+           ij   = v
+           ijp1 = v+1
+           if ( ijp1 == ADM_gmax_pl+1 ) ijp1 = ADM_gmin_pl
+
+           do d = 1, ADM_nxyz
+              wk_pl(d,1) = GRD_x_pl(ij  ,k0,l,d)
+              wk_pl(d,2) = GRD_x_pl(ijp1,k0,l,d)
+           enddo
+
+           call GMTR_TNvec( Tvec(:), Nvec(:),                            & ! [OUT]
+                            wk_pl(:,1), wk_pl(:,2),                      & ! [IN]
+                            GRD_grid_type, GMTR_polygon_type, GRD_rscale ) ! [IN]
+
+           GMTR_a_pl(ij,k0,l,GMTR_a_TN2X) = Nvec(1)
+           GMTR_a_pl(ij,k0,l,GMTR_a_TN2Y) = Nvec(2)
+           GMTR_a_pl(ij,k0,l,GMTR_a_TN2Z) = Nvec(3)
+           GMTR_a_pl(ij,k0,l,GMTR_a_TT2X) = Tvec(1)
+           GMTR_a_pl(ij,k0,l,GMTR_a_TT2Y) = Tvec(2)
+           GMTR_a_pl(ij,k0,l,GMTR_a_TT2Z) = Tvec(3)
+        enddo
+
+        !--- Pentagon
+        do v = ADM_gmin_pl, ADM_gmax_pl
+           ij   = v
+           ijm1 = v-1
+           if ( ijm1 == ADM_gmin_pl-1 ) ijm1 = ADM_gmax_pl
+
+           do d = 1, ADM_nxyz
+              wk_pl(d,1) = GRD_xt_pl(ijm1,k0,l,d)
+              wk_pl(d,2) = GRD_xt_pl(ij  ,k0,l,d)
+           enddo
+
+           call GMTR_TNvec( Tvec(:), Nvec(:),                            & ! [OUT]
+                            wk_pl(:,1), wk_pl(:,2),                      & ! [IN]
+                            GRD_grid_type, GMTR_polygon_type, GRD_rscale ) ! [IN]
+
+           GMTR_a_pl(ij,k0,l,GMTR_a_HNX) = Nvec(1)
+           GMTR_a_pl(ij,k0,l,GMTR_a_HNY) = Nvec(2)
+           GMTR_a_pl(ij,k0,l,GMTR_a_HNZ) = Nvec(3)
+           GMTR_a_pl(ij,k0,l,GMTR_a_HTX) = Tvec(1)
+           GMTR_a_pl(ij,k0,l,GMTR_a_HTY) = Tvec(2)
+           GMTR_a_pl(ij,k0,l,GMTR_a_HTZ) = Tvec(3)
+        enddo
+
+     enddo
+  endif
+
+  return
+end subroutine GMTR_a_setup
+\end{LstF90}
+%
+The normal vector and the tangent vector are calculated between the pole point and neighboring grid point,
+and between the two neighboring grid points. Then the metrics for the edge of the pentagonal control cell
+are calculated by almost the same procedure using subroutine \src{GMTR_TNvec}.
+
+
+
+\subsubsection{\src{OPRT_divergence_setup}}
+
+Module \src{mod_oprt} contains public objects related to the vector
+operator, such as divergence, rotation, laplacian, etc.
+%
+Calculation of these vector operator is descretized to form stencil
+calculation, which needs stencil coefficients.
+%
+This subroutine calculates the coefficients for the divergence operator,
+subroutine \src{OPRT_divergence}, in advance.
+
+Argument lists and local variables definition part of this subroutine is
+as follows.
+
+\begin{LstF90}[name=OPRT_divergence_setup]
+subroutine OPRT_divergence_setup( &
+     GMTR_p,   GMTR_p_pl,  &
+     GMTR_t,   GMTR_t_pl,  &
+     GMTR_a,   GMTR_a_pl,  &
+     coef_div, coef_div_pl )
+!ESC!    use mod_adm, only: &
+!ESC!       ADM_have_pl,  &
+!ESC!       ADM_have_sgp, &
+!ESC!       ADM_gall_1d,  &
+!ESC!       ADM_gmin,     &
+!ESC!       ADM_gmax,     &
+!ESC!       ADM_gslf_pl,  &
+!ESC!       ADM_gmin_pl,  &
+!ESC!       ADM_gmax_pl
+!ESC!    use mod_gmtr, only: &
+!ESC!       P_RAREA => GMTR_p_RAREA, &
+!ESC!       W1      => GMTR_t_W1,    &
+!ESC!       W2      => GMTR_t_W2,    &
+!ESC!       W3      => GMTR_t_W3,    &
+!ESC!       HNX     => GMTR_a_HNX,   &
+!ESC!       GMTR_p_nmax,             &
+!ESC!       GMTR_t_nmax,             &
+!ESC!       GMTR_a_nmax,             &
+!ESC!       GMTR_a_nmax_pl
+  implicit none
+
+  real(RP), intent(in)  :: GMTR_p     (ADM_gall   ,K0,ADM_lall   ,      GMTR_p_nmax   )
+  real(RP), intent(in)  :: GMTR_p_pl  (ADM_gall_pl,K0,ADM_lall_pl,      GMTR_p_nmax   )
+  real(RP), intent(in)  :: GMTR_t     (ADM_gall   ,K0,ADM_lall   ,TI:TJ,GMTR_t_nmax   )
+  real(RP), intent(in)  :: GMTR_t_pl  (ADM_gall_pl,K0,ADM_lall_pl,      GMTR_t_nmax   )
+  real(RP), intent(in)  :: GMTR_a     (ADM_gall   ,K0,ADM_lall   ,AI:AJ,GMTR_a_nmax   )
+  real(RP), intent(in)  :: GMTR_a_pl  (ADM_gall_pl,K0,ADM_lall_pl,      GMTR_a_nmax_pl)
+  real(RP), intent(out) :: coef_div   (ADM_gall,0:6        ,ADM_nxyz,ADM_lall   )
+  real(RP), intent(out) :: coef_div_pl(         0:ADM_vlink,ADM_nxyz,ADM_lall_pl)
+
+  integer  :: gmin, gmax, iall, gall, nxyz, lall
+
+  integer  :: ij
+  integer  :: ip1j, ijp1, ip1jp1
+  integer  :: im1j, ijm1, im1jm1
+
+  real(RP) :: coef
+  integer  :: g, l, d, n, v, hn
+  !---------------------------------------------------------------------------
+
+\end{LstF90}
+
+Input arguments are the metrics calculated by the subroutine described
+before in this section.
+%
+Output arguments \src{coef_div} and \src{coef_div_pl} are the
+coefficients for the divergence operator for the normal region and the
+pole region, respectively.
+%
+The second dimension of \src{coef_div} has the range \src{0:6}, which
+corresponds to the 7-point stencil calculation.
+%
+Also the second dimension of \src{coef_div_pl} has the range
+\src{0:ADM_vlink} where \src{ADM_vlink} is $5$, corresponds to the
+6-point stencil calculation.
+%
+Note that the pole region is a pentagon.
+
+
+The procedure of this  subroutine is consist of three parts.
+The first part is as follows.
+
+\begin{LstF90}[name=OPRT_divergence_setup,firstnumber=last]
+  !if( IO_L ) write(IO_FID_LOG,*) '*** setup coefficient of divergence operator'
+
+  gmin = (ADM_gmin-1)*ADM_gall_1d + ADM_gmin
+  gmax = (ADM_gmax-1)*ADM_gall_1d + ADM_gmax
+  iall = ADM_gall_1d
+  gall = ADM_gall
+  nxyz = ADM_nxyz
+  lall = ADM_lall
+
+  !$omp parallel workshare
+  coef_div   (:,:,:,:) = 0.0_RP
+  !$omp end parallel workshare
+  coef_div_pl(  :,:,:) = 0.0_RP
+
+  !$omp parallel default(none),private(g,d,l,hn,ij,ip1j,ip1jp1,ijp1,im1j,ijm1,im1jm1), &
+  !$omp shared(ADM_have_sgp,gmin,gmax,iall,gall,nxyz,lall,coef_div,GMTR_p,GMTR_t,GMTR_a)
+  do l = 1, lall
+  do d = 1, nxyz
+     hn = d + HNX - 1
+
+     !$omp do
+     do g = gmin, gmax
+        ij     = g
+        ip1j   = g + 1
+        ip1jp1 = g + iall + 1
+        ijp1   = g + iall
+        im1j   = g - 1
+        im1jm1 = g - iall - 1
+        ijm1   = g - iall
+
+        ! ij
+        coef_div(ij,0,d,l) = ( + GMTR_t(ij    ,k0,l,TI,W1) * GMTR_a(ij    ,k0,l,AI ,hn) & ! Q1 * b6
+                               + GMTR_t(ij    ,k0,l,TI,W1) * GMTR_a(ij    ,k0,l,AIJ,hn) & ! Q1 * b1
+                               + GMTR_t(ij    ,k0,l,TJ,W1) * GMTR_a(ij    ,k0,l,AIJ,hn) & ! Q2 * b1
+                               + GMTR_t(ij    ,k0,l,TJ,W1) * GMTR_a(ij    ,k0,l,AJ ,hn) & ! Q2 * b2
+                               + GMTR_t(im1j  ,k0,l,TI,W2) * GMTR_a(ij    ,k0,l,AJ ,hn) & ! Q3 * b2
+                               - GMTR_t(im1j  ,k0,l,TI,W2) * GMTR_a(im1j  ,k0,l,AI ,hn) & ! Q3 * b3
+                               - GMTR_t(im1jm1,k0,l,TJ,W2) * GMTR_a(im1j  ,k0,l,AI ,hn) & ! Q4 * b3
+                               - GMTR_t(im1jm1,k0,l,TJ,W2) * GMTR_a(im1jm1,k0,l,AIJ,hn) & ! Q4 * b4
+                               - GMTR_t(im1jm1,k0,l,TI,W3) * GMTR_a(im1jm1,k0,l,AIJ,hn) & ! Q5 * b4
+                               - GMTR_t(im1jm1,k0,l,TI,W3) * GMTR_a(ijm1  ,k0,l,AJ ,hn) & ! Q5 * b5
+                               - GMTR_t(ijm1  ,k0,l,TJ,W3) * GMTR_a(ijm1  ,k0,l,AJ ,hn) & ! Q6 * b5
+                               + GMTR_t(ijm1  ,k0,l,TJ,W3) * GMTR_a(ij    ,k0,l,AI ,hn) & ! Q6 * b6
+                             ) * 0.5_RP * GMTR_p(ij,k0,l,P_RAREA)
+        ! ip1j
+        coef_div(ij,1,d,l) = ( - GMTR_t(ijm1  ,k0,l,TJ,W2) * GMTR_a(ijm1  ,k0,l,AJ ,hn) & ! Q6 * b5
+                               + GMTR_t(ijm1  ,k0,l,TJ,W2) * GMTR_a(ij    ,k0,l,AI ,hn) & ! Q6 * b6
+                               + GMTR_t(ij    ,k0,l,TI,W2) * GMTR_a(ij    ,k0,l,AI ,hn) & ! Q1 * b6
+                               + GMTR_t(ij    ,k0,l,TI,W2) * GMTR_a(ij    ,k0,l,AIJ,hn) & ! Q1 * b1
+                             ) * 0.5_RP * GMTR_p(ij,k0,l,P_RAREA)
+        ! ip1jp1
+        coef_div(ij,2,d,l) = ( + GMTR_t(ij    ,k0,l,TI,W3) * GMTR_a(ij    ,k0,l,AI ,hn) & ! Q1 * b6
+                               + GMTR_t(ij    ,k0,l,TI,W3) * GMTR_a(ij    ,k0,l,AIJ,hn) & ! Q1 * b1
+                               + GMTR_t(ij    ,k0,l,TJ,W2) * GMTR_a(ij    ,k0,l,AIJ,hn) & ! Q2 * b1
+                               + GMTR_t(ij    ,k0,l,TJ,W2) * GMTR_a(ij    ,k0,l,AJ ,hn) & ! Q2 * b2
+                             ) * 0.5_RP * GMTR_p(ij,k0,l,P_RAREA)
+        ! ijp1
+        coef_div(ij,3,d,l) = ( + GMTR_t(ij    ,k0,l,TJ,W3) * GMTR_a(ij    ,k0,l,AIJ,hn) & ! Q2 * b1
+                               + GMTR_t(ij    ,k0,l,TJ,W3) * GMTR_a(ij    ,k0,l,AJ ,hn) & ! Q2 * b2
+                               + GMTR_t(im1j  ,k0,l,TI,W3) * GMTR_a(ij    ,k0,l,AJ ,hn) & ! Q3 * b2
+                               - GMTR_t(im1j  ,k0,l,TI,W3) * GMTR_a(im1j  ,k0,l,AI ,hn) & ! Q3 * b3
+                             ) * 0.5_RP*GMTR_p(ij,k0,l,P_RAREA)
+        ! im1j
+        coef_div(ij,4,d,l) = ( + GMTR_t(im1j  ,k0,l,TI,W1) * GMTR_a(ij    ,k0,l,AJ ,hn) & ! Q3 * b2
+                               - GMTR_t(im1j  ,k0,l,TI,W1) * GMTR_a(im1j  ,k0,l,AI ,hn) & ! Q3 * b3
+                               - GMTR_t(im1jm1,k0,l,TJ,W3) * GMTR_a(im1j  ,k0,l,AI ,hn) & ! Q4 * b3
+                               - GMTR_t(im1jm1,k0,l,TJ,W3) * GMTR_a(im1jm1,k0,l,AIJ,hn) & ! Q4 * b4
+                             ) * 0.5_RP * GMTR_p(ij,k0,l,P_RAREA)
+        ! im1jm1
+        coef_div(ij,5,d,l) = ( - GMTR_t(im1jm1,k0,l,TJ,W1) * GMTR_a(im1j  ,k0,l,AI ,hn) & ! Q4 * b3
+                               - GMTR_t(im1jm1,k0,l,TJ,W1) * GMTR_a(im1jm1,k0,l,AIJ,hn) & ! Q4 * b4
+                               - GMTR_t(im1jm1,k0,l,TI,W1) * GMTR_a(im1jm1,k0,l,AIJ,hn) & ! Q5 * b4
+                               - GMTR_t(im1jm1,k0,l,TI,W1) * GMTR_a(ijm1  ,k0,l,AJ ,hn) & ! Q5 * b5
+                             ) * 0.5_RP * GMTR_p(ij,k0,l,P_RAREA)
+        ! ijm1
+        coef_div(ij,6,d,l) = ( - GMTR_t(im1jm1,k0,l,TI,W2) * GMTR_a(im1jm1,k0,l,AIJ,hn) & ! Q5 * b4
+                               - GMTR_t(im1jm1,k0,l,TI,W2) * GMTR_a(ijm1  ,k0,l,AJ ,hn) & ! Q5 * b5
+                               - GMTR_t(ijm1  ,k0,l,TJ,W1) * GMTR_a(ijm1  ,k0,l,AJ ,hn) & ! Q6 * b5
+                               + GMTR_t(ijm1  ,k0,l,TJ,W1) * GMTR_a(ij    ,k0,l,AI ,hn) & ! Q6 * b6
+                             ) * 0.5_RP * GMTR_p(ij,k0,l,P_RAREA)
+     enddo
+     !$omp end do
+
+\end{LstF90}
+%
+The first part above and the second part below are in a long $l$-loop.
+%
+In the $g$-loop represents horizontal index, 7 coefficients are
+calculated separately from the various metrics.
+
+The second part is as follows.
+
+\begin{LstF90}[name=OPRT_divergence_setup,firstnumber=last]
+     if ( ADM_have_sgp(l) ) then ! pentagon
+        !$omp master
+        ij     = gmin
+        ip1j   = gmin + 1
+        ip1jp1 = gmin + iall + 1
+        ijp1   = gmin + iall
+        im1j   = gmin - 1
+        im1jm1 = gmin - iall - 1
+        ijm1   = gmin - iall
+
+        ! ij
+        coef_div(ij,0,d,l) = ( + GMTR_t(ij    ,k0,l,TI,W1) * GMTR_a(ij    ,k0,l,AI ,hn) & ! Q1 * b6
+                               + GMTR_t(ij    ,k0,l,TI,W1) * GMTR_a(ij    ,k0,l,AIJ,hn) & ! Q1 * b1
+                               + GMTR_t(ij    ,k0,l,TJ,W1) * GMTR_a(ij    ,k0,l,AIJ,hn) & ! Q2 * b1
+                               + GMTR_t(ij    ,k0,l,TJ,W1) * GMTR_a(ij    ,k0,l,AJ ,hn) & ! Q2 * b2
+                               + GMTR_t(im1j  ,k0,l,TI,W2) * GMTR_a(ij    ,k0,l,AJ ,hn) & ! Q3 * b2
+                               - GMTR_t(im1j  ,k0,l,TI,W2) * GMTR_a(im1j  ,k0,l,AI ,hn) & ! Q3 * b3
+                               - GMTR_t(im1jm1,k0,l,TJ,W2) * GMTR_a(im1j  ,k0,l,AI ,hn) & ! Q4 * b3
+                               - GMTR_t(im1jm1,k0,l,TJ,W2) * GMTR_a(im1jm1,k0,l,AIJ,hn) & ! Q4 * b4
+                               - GMTR_t(ijm1  ,k0,l,TJ,W3) * GMTR_a(im1jm1,k0,l,AIJ,hn) & ! Q6 * b4
+                               + GMTR_t(ijm1  ,k0,l,TJ,W3) * GMTR_a(ij    ,k0,l,AI ,hn) & ! Q6 * b6
+                             ) * 0.5_RP * GMTR_p(ij,k0,l,P_RAREA)
+        ! ip1j
+        coef_div(ij,1,d,l) = ( - GMTR_t(ijm1  ,k0,l,TJ,W2) * GMTR_a(im1jm1,k0,l,AIJ,hn) & ! Q6 * b4
+                               + GMTR_t(ijm1  ,k0,l,TJ,W2) * GMTR_a(ij    ,k0,l,AI ,hn) & ! Q6 * b6
+                               + GMTR_t(ij    ,k0,l,TI,W2) * GMTR_a(ij    ,k0,l,AI ,hn) & ! Q1 * b6
+                               + GMTR_t(ij    ,k0,l,TI,W2) * GMTR_a(ij    ,k0,l,AIJ,hn) & ! Q1 * b1
+                             ) * 0.5_RP * GMTR_p(ij,k0,l,P_RAREA)
+        ! ip1jp1
+        coef_div(ij,2,d,l) = ( + GMTR_t(ij    ,k0,l,TI,W3) * GMTR_a(ij    ,k0,l,AI ,hn) & ! Q1 * b6
+                               + GMTR_t(ij    ,k0,l,TI,W3) * GMTR_a(ij    ,k0,l,AIJ,hn) & ! Q1 * b1
+                               + GMTR_t(ij    ,k0,l,TJ,W2) * GMTR_a(ij    ,k0,l,AIJ,hn) & ! Q2 * b1
+                               + GMTR_t(ij    ,k0,l,TJ,W2) * GMTR_a(ij    ,k0,l,AJ ,hn) & ! Q2 * b2
+                             ) * 0.5_RP * GMTR_p(ij,k0,l,P_RAREA)
+        ! ijp1
+        coef_div(ij,3,d,l) = ( + GMTR_t(ij    ,k0,l,TJ,W3) * GMTR_a(ij    ,k0,l,AIJ,hn) & ! Q2 * b1
+                               + GMTR_t(ij    ,k0,l,TJ,W3) * GMTR_a(ij    ,k0,l,AJ ,hn) & ! Q2 * b2
+                               + GMTR_t(im1j  ,k0,l,TI,W3) * GMTR_a(ij    ,k0,l,AJ ,hn) & ! Q3 * b2
+                               - GMTR_t(im1j  ,k0,l,TI,W3) * GMTR_a(im1j  ,k0,l,AI ,hn) & ! Q3 * b3
+                             ) * 0.5_RP * GMTR_p(ij,k0,l,P_RAREA)
+        ! im1j
+        coef_div(ij,4,d,l) = ( + GMTR_t(im1j  ,k0,l,TI,W1) * GMTR_a(ij    ,k0,l,AJ ,hn) & ! Q3 * b2
+                               - GMTR_t(im1j  ,k0,l,TI,W1) * GMTR_a(im1j  ,k0,l,AI ,hn) & ! Q3 * b3
+                               - GMTR_t(im1jm1,k0,l,TJ,W3) * GMTR_a(im1j  ,k0,l,AI ,hn) & ! Q4 * b3
+                               - GMTR_t(im1jm1,k0,l,TJ,W3) * GMTR_a(im1jm1,k0,l,AIJ,hn) & ! Q4 * b4
+                             ) * 0.5_RP * GMTR_p(ij,k0,l,P_RAREA)
+        ! im1jm1
+        coef_div(ij,5,d,l) = ( - GMTR_t(im1jm1,k0,l,TJ,W1) * GMTR_a(im1j  ,k0,l,AI ,hn) & ! Q4 * b3
+                               - GMTR_t(im1jm1,k0,l,TJ,W1) * GMTR_a(im1jm1,k0,l,AIJ,hn) & ! Q4 * b4
+                             ) * 0.5_RP * GMTR_p(ij,k0,l,P_RAREA)
+        ! ijm1
+        coef_div(ij,6,d,l) = ( - GMTR_t(ijm1  ,k0,l,TJ,W1) * GMTR_a(im1jm1,k0,l,AIJ,hn) & ! Q6 * b4
+                               + GMTR_t(ijm1  ,k0,l,TJ,W1) * GMTR_a(ij    ,k0,l,AI ,hn) & ! Q6 * b6
+                             ) * 0.5_RP * GMTR_p(ij,k0,l,P_RAREA)
+        !$omp end master
+     endif
+
+  enddo ! loop d
+  enddo ! loop l
+  !$omp end parallel
+\end{LstF90}
+%
+This section is for the singular point.
+%
+Note that \src{ADM_have_sgp(1)}  is true.
+
+
+The last section of this subroutine is for the pole region and is as
+follows.
+
+\begin{LstF90}[name=OPRT_divergence_setup,firstnumber=last]
+  if ( ADM_have_pl ) then
+     n = ADM_gslf_pl
+     do l = 1, ADM_lall_pl
+     do d = 1, ADM_nxyz
+        hn = d + HNX - 1
+
+        coef = 0.0_RP
+        do v = ADM_gmin_pl, ADM_gmax_pl
+           ij   = v
+           ijp1 = v + 1
+           if( ijp1 == ADM_gmax_pl+1 ) ijp1 = ADM_gmin_pl
+
+           coef = coef + ( GMTR_t_pl(ij,k0,l,W1) * GMTR_a_pl(ij  ,k0,l,hn) &
+                         + GMTR_t_pl(ij,k0,l,W1) * GMTR_a_pl(ijp1,k0,l,hn) )
+        enddo
+        coef_div_pl(0,d,l) = coef * 0.5_RP * GMTR_p_pl(n,k0,l,P_RAREA)
+
+        do v = ADM_gmin_pl, ADM_gmax_pl
+           ij   = v
+           ijp1 = v + 1
+           ijm1 = v - 1
+           if( ijp1 == ADM_gmax_pl + 1 ) ijp1 = ADM_gmin_pl
+           if( ijm1 == ADM_gmin_pl - 1 ) ijm1 = ADM_gmax_pl
+
+           coef_div_pl(v-1,d,l) = ( + GMTR_t_pl(ijm1,k0,l,W3) * GMTR_a_pl(ijm1,k0,l,hn) &
+                                    + GMTR_t_pl(ijm1,k0,l,W3) * GMTR_a_pl(ij  ,k0,l,hn) &
+                                    + GMTR_t_pl(ij  ,k0,l,W2) * GMTR_a_pl(ij  ,k0,l,hn) &
+                                    + GMTR_t_pl(ij  ,k0,l,W2) * GMTR_a_pl(ijp1,k0,l,hn) &
+                                  ) * 0.5_RP * GMTR_p_pl(n,k0,l,P_RAREA)
+        enddo
+     enddo ! loop d
+     enddo ! loop l
+  endif
+
+  return
+end subroutine OPRT_divergence_setup
+\end{LstF90}
+%
+Note the data layout of coefficient is slightly different between the normal region and the pole region,
+First dimension of \src{coef_div_pl} corresponds to the second dimention of \src{coef_div}.
+%
+The range of index \src{v} of the inner-most loop are \src{ADM_gmin_pl} and \src{ADM_gmax_pl},
+which means the five grids surrounding the pole point.
+
+\subsubsection{\src{OPRT_rotation_setup}}
+
+This subroutine is similar to the previous one, but this one is for the
+rotation operator, subroutine \src{OPRT_rotation}.
+
+
+Argument lists and local variables definition part of this subroutine is
+as follows.
+
+\begin{LstF90}[name=OPRT_rotation_setup]
+subroutine OPRT_rotation_setup( &
+     GMTR_p,   GMTR_p_pl,  &
+     GMTR_t,   GMTR_t_pl,  &
+     GMTR_a,   GMTR_a_pl,  &
+     coef_rot, coef_rot_pl )
+!ESC!    use mod_adm, only: &
+!ESC!       ADM_have_pl,  &
+!ESC!       ADM_have_sgp, &
+!ESC!       ADM_gall_1d,  &
+!ESC!       ADM_gmin,     &
+!ESC!       ADM_gmax,     &
+!ESC!       ADM_gslf_pl,  &
+!ESC!       ADM_gmin_pl,  &
+!ESC!       ADM_gmax_pl
+!ESC!    use mod_gmtr, only: &
+!ESC!       P_RAREA => GMTR_p_RAREA, &
+!ESC!       W1      => GMTR_t_W1,    &
+!ESC!       W2      => GMTR_t_W2,    &
+!ESC!       W3      => GMTR_t_W3,    &
+!ESC!       HTX     => GMTR_a_HTX,   &
+!ESC!       GMTR_p_nmax,             &
+!ESC!       GMTR_t_nmax,             &
+!ESC!       GMTR_a_nmax,             &
+!ESC!       GMTR_a_nmax_pl
+  implicit none
+
+  real(RP), intent(in)  :: GMTR_p     (ADM_gall   ,K0,ADM_lall   ,      GMTR_p_nmax   )
+  real(RP), intent(in)  :: GMTR_p_pl  (ADM_gall_pl,K0,ADM_lall_pl,      GMTR_p_nmax   )
+  real(RP), intent(in)  :: GMTR_t     (ADM_gall   ,K0,ADM_lall   ,TI:TJ,GMTR_t_nmax   )
+  real(RP), intent(in)  :: GMTR_t_pl  (ADM_gall_pl,K0,ADM_lall_pl,      GMTR_t_nmax   )
+  real(RP), intent(in)  :: GMTR_a     (ADM_gall   ,K0,ADM_lall   ,AI:AJ,GMTR_a_nmax   )
+  real(RP), intent(in)  :: GMTR_a_pl  (ADM_gall_pl,K0,ADM_lall_pl,      GMTR_a_nmax_pl)
+  real(RP), intent(out) :: coef_rot   (ADM_gall,0:6        ,ADM_nxyz,ADM_lall   )
+  real(RP), intent(out) :: coef_rot_pl(         0:ADM_vlink,ADM_nxyz,ADM_lall_pl)
+
+  integer  :: gmin, gmax, iall, gall, nxyz, lall
+
+  integer  :: ij
+  integer  :: ip1j, ijp1, ip1jp1
+  integer  :: im1j, ijm1, im1jm1
+
+  real(RP) :: coef
+  integer  :: g, l, d, n, v, ht
+  !---------------------------------------------------------------------------
+
+\end{LstF90}
+%
+Input arguments are the same with subroutine
+\src{OPRT_divergence_setup}, the metrics calculated by the subroutine described
+before in this section.
+%
+Output arguments \src{coef_rot} and \src{coef_rot_pl} are the
+coefficients for the rotation operator for the normal region and the
+pole region, respectively.
+%
+The second dimension of \src{coef_rot} has the range \src{0:6}, which
+corresponds to the 7-point stencil calculation.
+%
+Also the second dimension of \src{coef_rot_pl} has the range
+\src{0:ADM_vlink} where \src{ADM_vlink} is $5$, corresponds to the
+6-point stencil calculation.
+
+The procedure of this  subroutine is consist of three parts.
+The first part is as follows.
+
+
+\begin{LstF90}[name=OPRT_rotation_setup,firstnumber=last]
+  !if( IO_L ) write(IO_FID_LOG,*) '*** setup coefficient of rotation operator'
+
+  gmin = (ADM_gmin-1)*ADM_gall_1d + ADM_gmin
+  gmax = (ADM_gmax-1)*ADM_gall_1d + ADM_gmax
+  iall = ADM_gall_1d
+  gall = ADM_gall
+  nxyz = ADM_nxyz
+  lall = ADM_lall
+
+  !$omp parallel workshare
+  coef_rot   (:,:,:,:) = 0.0_RP
+  !$omp end parallel workshare
+  coef_rot_pl(  :,:,:) = 0.0_RP
+
+  !$omp parallel default(none),private(g,d,l,ht,ij,ip1j,ip1jp1,ijp1,im1j,ijm1,im1jm1), &
+  !$omp shared(ADM_have_sgp,gmin,gmax,iall,gall,nxyz,lall,coef_rot,GMTR_p,GMTR_t,GMTR_a)
+  do l = 1, lall
+  do d = 1, nxyz
+     ht = d + HTX - 1
+
+     !$omp do
+     do g = gmin, gmax
+        ij     = g
+        ip1j   = g + 1
+        ip1jp1 = g + iall + 1
+        ijp1   = g + iall
+        im1j   = g - 1
+        im1jm1 = g - iall - 1
+        ijm1   = g - iall
+
+        ! ij
+        coef_rot(ij,0,d,l) = ( + GMTR_t(ij    ,k0,l,TI,W1) * GMTR_a(ij    ,k0,l,AI ,ht) & ! Q1 * b6
+                               + GMTR_t(ij    ,k0,l,TI,W1) * GMTR_a(ij    ,k0,l,AIJ,ht) & ! Q1 * b1
+                               + GMTR_t(ij    ,k0,l,TJ,W1) * GMTR_a(ij    ,k0,l,AIJ,ht) & ! Q2 * b1
+                               + GMTR_t(ij    ,k0,l,TJ,W1) * GMTR_a(ij    ,k0,l,AJ ,ht) & ! Q2 * b2
+                               + GMTR_t(im1j  ,k0,l,TI,W2) * GMTR_a(ij    ,k0,l,AJ ,ht) & ! Q3 * b2
+                               - GMTR_t(im1j  ,k0,l,TI,W2) * GMTR_a(im1j  ,k0,l,AI ,ht) & ! Q3 * b3
+                               - GMTR_t(im1jm1,k0,l,TJ,W2) * GMTR_a(im1j  ,k0,l,AI ,ht) & ! Q4 * b3
+                               - GMTR_t(im1jm1,k0,l,TJ,W2) * GMTR_a(im1jm1,k0,l,AIJ,ht) & ! Q4 * b4
+                               - GMTR_t(im1jm1,k0,l,TI,W3) * GMTR_a(im1jm1,k0,l,AIJ,ht) & ! Q5 * b4
+                               - GMTR_t(im1jm1,k0,l,TI,W3) * GMTR_a(ijm1  ,k0,l,AJ ,ht) & ! Q5 * b5
+                               - GMTR_t(ijm1  ,k0,l,TJ,W3) * GMTR_a(ijm1  ,k0,l,AJ ,ht) & ! Q6 * b5
+                               + GMTR_t(ijm1  ,k0,l,TJ,W3) * GMTR_a(ij    ,k0,l,AI ,ht) & ! Q6 * b6
+                             ) * 0.5_RP * GMTR_p(ij,k0,l,P_RAREA)
+        ! ip1j
+        coef_rot(ij,1,d,l) = ( - GMTR_t(ijm1  ,k0,l,TJ,W2) * GMTR_a(ijm1  ,k0,l,AJ ,ht) & ! Q6 * b5
+                               + GMTR_t(ijm1  ,k0,l,TJ,W2) * GMTR_a(ij    ,k0,l,AI ,ht) & ! Q6 * b6
+                               + GMTR_t(ij    ,k0,l,TI,W2) * GMTR_a(ij    ,k0,l,AI ,ht) & ! Q1 * b6
+                               + GMTR_t(ij    ,k0,l,TI,W2) * GMTR_a(ij    ,k0,l,AIJ,ht) & ! Q1 * b1
+                             ) * 0.5_RP * GMTR_p(ij,k0,l,P_RAREA)
+        ! ip1jp1
+        coef_rot(ij,2,d,l) = ( + GMTR_t(ij    ,k0,l,TI,W3) * GMTR_a(ij    ,k0,l,AI ,ht) & ! Q1 * b6
+                               + GMTR_t(ij    ,k0,l,TI,W3) * GMTR_a(ij    ,k0,l,AIJ,ht) & ! Q1 * b1
+                               + GMTR_t(ij    ,k0,l,TJ,W2) * GMTR_a(ij    ,k0,l,AIJ,ht) & ! Q2 * b1
+                               + GMTR_t(ij    ,k0,l,TJ,W2) * GMTR_a(ij    ,k0,l,AJ ,ht) & ! Q2 * b2
+                             ) * 0.5_RP * GMTR_p(ij,k0,l,P_RAREA)
+        ! ijp1
+        coef_rot(ij,3,d,l) = ( + GMTR_t(ij    ,k0,l,TJ,W3) * GMTR_a(ij    ,k0,l,AIJ,ht) & ! Q2 * b1
+                               + GMTR_t(ij    ,k0,l,TJ,W3) * GMTR_a(ij    ,k0,l,AJ ,ht) & ! Q2 * b2
+                               + GMTR_t(im1j  ,k0,l,TI,W3) * GMTR_a(ij    ,k0,l,AJ ,ht) & ! Q3 * b2
+                               - GMTR_t(im1j  ,k0,l,TI,W3) * GMTR_a(im1j  ,k0,l,AI ,ht) & ! Q3 * b3
+                             ) * 0.5_RP*GMTR_p(ij,k0,l,P_RAREA)
+        ! im1j
+        coef_rot(ij,4,d,l) = ( + GMTR_t(im1j  ,k0,l,TI,W1) * GMTR_a(ij    ,k0,l,AJ ,ht) & ! Q3 * b2
+                               - GMTR_t(im1j  ,k0,l,TI,W1) * GMTR_a(im1j  ,k0,l,AI ,ht) & ! Q3 * b3
+                               - GMTR_t(im1jm1,k0,l,TJ,W3) * GMTR_a(im1j  ,k0,l,AI ,ht) & ! Q4 * b3
+                               - GMTR_t(im1jm1,k0,l,TJ,W3) * GMTR_a(im1jm1,k0,l,AIJ,ht) & ! Q4 * b4
+                             ) * 0.5_RP * GMTR_p(ij,k0,l,P_RAREA)
+        ! im1jm1
+        coef_rot(ij,5,d,l) = ( - GMTR_t(im1jm1,k0,l,TJ,W1) * GMTR_a(im1j  ,k0,l,AI ,ht) & ! Q4 * b3
+                               - GMTR_t(im1jm1,k0,l,TJ,W1) * GMTR_a(im1jm1,k0,l,AIJ,ht) & ! Q4 * b4
+                               - GMTR_t(im1jm1,k0,l,TI,W1) * GMTR_a(im1jm1,k0,l,AIJ,ht) & ! Q5 * b4
+                               - GMTR_t(im1jm1,k0,l,TI,W1) * GMTR_a(ijm1  ,k0,l,AJ ,ht) & ! Q5 * b5
+                             ) * 0.5_RP * GMTR_p(ij,k0,l,P_RAREA)
+        ! ijm1
+        coef_rot(ij,6,d,l) = ( - GMTR_t(im1jm1,k0,l,TI,W2) * GMTR_a(im1jm1,k0,l,AIJ,ht) & ! Q5 * b4
+                               - GMTR_t(im1jm1,k0,l,TI,W2) * GMTR_a(ijm1  ,k0,l,AJ ,ht) & ! Q5 * b5
+                               - GMTR_t(ijm1  ,k0,l,TJ,W1) * GMTR_a(ijm1  ,k0,l,AJ ,ht) & ! Q6 * b5
+                               + GMTR_t(ijm1  ,k0,l,TJ,W1) * GMTR_a(ij    ,k0,l,AI ,ht) & ! Q6 * b6
+                             ) * 0.5_RP * GMTR_p(ij,k0,l,P_RAREA)
+     enddo
+     !$omp end do
+
+\end{LstF90}
+%
+The first part above and the second part below are in a long $l$-loop.
+%
+In the $g$-loop represents horizontal index, 7 coefficients are
+calculated separately from the various metrics.
+
+The second part is as follows.
+
+\begin{LstF90}[name=OPRT_rotation_setup,firstnumber=last]
+     if ( ADM_have_sgp(l) ) then ! pentagon
+        !$omp master
+        ij     = gmin
+        ip1j   = gmin + 1
+        ip1jp1 = gmin + iall + 1
+        ijp1   = gmin + iall
+        im1j   = gmin - 1
+        im1jm1 = gmin - iall - 1
+        ijm1   = gmin - iall
+
+        ! ij
+        coef_rot(ij,0,d,l) = ( + GMTR_t(ij    ,k0,l,TI,W1) * GMTR_a(ij    ,k0,l,AI ,ht) & ! Q1 * b6
+                               + GMTR_t(ij    ,k0,l,TI,W1) * GMTR_a(ij    ,k0,l,AIJ,ht) & ! Q1 * b1
+                               + GMTR_t(ij    ,k0,l,TJ,W1) * GMTR_a(ij    ,k0,l,AIJ,ht) & ! Q2 * b1
+                               + GMTR_t(ij    ,k0,l,TJ,W1) * GMTR_a(ij    ,k0,l,AJ ,ht) & ! Q2 * b2
+                               + GMTR_t(im1j  ,k0,l,TI,W2) * GMTR_a(ij    ,k0,l,AJ ,ht) & ! Q3 * b2
+                               - GMTR_t(im1j  ,k0,l,TI,W2) * GMTR_a(im1j  ,k0,l,AI ,ht) & ! Q3 * b3
+                               - GMTR_t(im1jm1,k0,l,TJ,W2) * GMTR_a(im1j  ,k0,l,AI ,ht) & ! Q4 * b3
+                               - GMTR_t(im1jm1,k0,l,TJ,W2) * GMTR_a(im1jm1,k0,l,AIJ,ht) & ! Q4 * b4
+                               - GMTR_t(ijm1  ,k0,l,TJ,W3) * GMTR_a(im1jm1,k0,l,AIJ,ht) & ! Q6 * b4
+                               + GMTR_t(ijm1  ,k0,l,TJ,W3) * GMTR_a(ij    ,k0,l,AI ,ht) & ! Q6 * b6
+                             ) * 0.5_RP * GMTR_p(ij,k0,l,P_RAREA)
+        ! ip1j
+        coef_rot(ij,1,d,l) = ( - GMTR_t(ijm1  ,k0,l,TJ,W2) * GMTR_a(im1jm1,k0,l,AIJ,ht) & ! Q6 * b4
+                               + GMTR_t(ijm1  ,k0,l,TJ,W2) * GMTR_a(ij    ,k0,l,AI ,ht) & ! Q6 * b6
+                               + GMTR_t(ij    ,k0,l,TI,W2) * GMTR_a(ij    ,k0,l,AI ,ht) & ! Q1 * b6
+                               + GMTR_t(ij    ,k0,l,TI,W2) * GMTR_a(ij    ,k0,l,AIJ,ht) & ! Q1 * b1
+                             ) * 0.5_RP * GMTR_p(ij,k0,l,P_RAREA)
+        ! ip1jp1
+        coef_rot(ij,2,d,l) = ( + GMTR_t(ij    ,k0,l,TI,W3) * GMTR_a(ij    ,k0,l,AI ,ht) & ! Q1 * b6
+                               + GMTR_t(ij    ,k0,l,TI,W3) * GMTR_a(ij    ,k0,l,AIJ,ht) & ! Q1 * b1
+                               + GMTR_t(ij    ,k0,l,TJ,W2) * GMTR_a(ij    ,k0,l,AIJ,ht) & ! Q2 * b1
+                               + GMTR_t(ij    ,k0,l,TJ,W2) * GMTR_a(ij    ,k0,l,AJ ,ht) & ! Q2 * b2
+                             ) * 0.5_RP * GMTR_p(ij,k0,l,P_RAREA)
+        ! ijp1
+        coef_rot(ij,3,d,l) = ( + GMTR_t(ij    ,k0,l,TJ,W3) * GMTR_a(ij    ,k0,l,AIJ,ht) & ! Q2 * b1
+                               + GMTR_t(ij    ,k0,l,TJ,W3) * GMTR_a(ij    ,k0,l,AJ ,ht) & ! Q2 * b2
+                               + GMTR_t(im1j  ,k0,l,TI,W3) * GMTR_a(ij    ,k0,l,AJ ,ht) & ! Q3 * b2
+                               - GMTR_t(im1j  ,k0,l,TI,W3) * GMTR_a(im1j  ,k0,l,AI ,ht) & ! Q3 * b3
+                             ) * 0.5_RP * GMTR_p(ij,k0,l,P_RAREA)
+        ! im1j
+        coef_rot(ij,4,d,l) = ( + GMTR_t(im1j  ,k0,l,TI,W1) * GMTR_a(ij    ,k0,l,AJ ,ht) & ! Q3 * b2
+                               - GMTR_t(im1j  ,k0,l,TI,W1) * GMTR_a(im1j  ,k0,l,AI ,ht) & ! Q3 * b3
+                               - GMTR_t(im1jm1,k0,l,TJ,W3) * GMTR_a(im1j  ,k0,l,AI ,ht) & ! Q4 * b3
+                               - GMTR_t(im1jm1,k0,l,TJ,W3) * GMTR_a(im1jm1,k0,l,AIJ,ht) & ! Q4 * b4
+                             ) * 0.5_RP * GMTR_p(ij,k0,l,P_RAREA)
+        ! im1jm1
+        coef_rot(ij,5,d,l) = ( - GMTR_t(im1jm1,k0,l,TJ,W1) * GMTR_a(im1j  ,k0,l,AI ,ht) & ! Q4 * b3
+                               - GMTR_t(im1jm1,k0,l,TJ,W1) * GMTR_a(im1jm1,k0,l,AIJ,ht) & ! Q4 * b4
+                             ) * 0.5_RP * GMTR_p(ij,k0,l,P_RAREA)
+        ! ijm1
+        coef_rot(ij,6,d,l) = ( - GMTR_t(ijm1  ,k0,l,TJ,W1) * GMTR_a(im1jm1,k0,l,AIJ,ht) & ! Q6 * b4
+                               + GMTR_t(ijm1  ,k0,l,TJ,W1) * GMTR_a(ij    ,k0,l,AI ,ht) & ! Q6 * b6
+                             ) * 0.5_RP * GMTR_p(ij,k0,l,P_RAREA)
+        !$omp end master
+     endif
+
+  enddo ! loop d
+  enddo ! loop l
+  !$omp end parallel
+
+\end{LstF90}
+%
+This section is for the singular point.
+%
+Note that \src{ADM_have_sgp(1)}  is true.
+
+
+The last section of this subroutine is for the pole region and is as
+follows.
+
+\begin{LstF90}[name=OPRT_rotation_setup,firstnumber=last]
+  if ( ADM_have_pl ) then
+     n = ADM_gslf_pl
+     do l = 1, ADM_lall_pl
+     do d = 1, ADM_nxyz
+        ht = d + HTX - 1
+
+        coef = 0.0_RP
+        do v = ADM_gmin_pl, ADM_gmax_pl
+           ij   = v
+           ijp1 = v + 1
+           if( ijp1 == ADM_gmax_pl+1 ) ijp1 = ADM_gmin_pl
+
+           coef = coef + ( GMTR_t_pl(ij,k0,l,W1) * GMTR_a_pl(ij  ,k0,l,ht) &
+                         + GMTR_t_pl(ij,k0,l,W1) * GMTR_a_pl(ijp1,k0,l,ht) )
+        enddo
+        coef_rot_pl(0,d,l) = coef * 0.5_RP * GMTR_p_pl(n,k0,l,P_RAREA)
+
+        do v = ADM_gmin_pl, ADM_gmax_pl
+           ij   = v
+           ijp1 = v + 1
+           ijm1 = v - 1
+           if( ijp1 == ADM_gmax_pl + 1 ) ijp1 = ADM_gmin_pl
+           if( ijm1 == ADM_gmin_pl - 1 ) ijm1 = ADM_gmax_pl
+
+           coef_rot_pl(v-1,d,l) = ( + GMTR_t_pl(ijm1,k0,l,W3) * GMTR_a_pl(ijm1,k0,l,ht) &
+                                    + GMTR_t_pl(ijm1,k0,l,W3) * GMTR_a_pl(ij  ,k0,l,ht) &
+                                    + GMTR_t_pl(ij  ,k0,l,W2) * GMTR_a_pl(ij  ,k0,l,ht) &
+                                    + GMTR_t_pl(ij  ,k0,l,W2) * GMTR_a_pl(ijp1,k0,l,ht) &
+                                  ) * 0.5_RP * GMTR_p_pl(n,k0,l,P_RAREA)
+        enddo
+     enddo ! loop d
+     enddo ! loop l
+  endif
+
+  return
+end subroutine OPRT_rotation_setup
+\end{LstF90}
+%
+Note the data layout of coefficient is slightly different between the normal region and the pole region,
+First dimension of \src{coef_rot_pl} corresponds to the second dimention of \src{coef_rot}.
+%
+The range of index \src{v} of the inner-most loop are \src{ADM_gmin_pl} and \src{ADM_gmax_pl},
+which means the five grids surrounding the pole point.
+
+
+
+\subsubsection{\src{OPRT_gradient_setup}}
+
+This subroutine is also similar to the previous subroutines, but this one is for the
+gradient operator, subroutine \src{OPRT_gradient}.
+
+
+Argument lists and local variables definition part of this subroutine is
+as follows.
+
+\begin{LstF90}[name=OPRT_gradient_setup]
+subroutine OPRT_gradient_setup( &
+     GMTR_p,    GMTR_p_pl,   &
+     GMTR_t,    GMTR_t_pl,   &
+     GMTR_a,    GMTR_a_pl,   &
+     coef_grad, coef_grad_pl )
+!ESC!    use mod_adm, only: &
+!ESC!       ADM_have_pl,  &
+!ESC!       ADM_have_sgp, &
+!ESC!       ADM_gall_1d,  &
+!ESC!       ADM_gmin,     &
+!ESC!       ADM_gmax,     &
+!ESC!       ADM_gslf_pl,  &
+!ESC!       ADM_gmin_pl,  &
+!ESC!       ADM_gmax_pl
+!ESC!    use mod_gmtr, only: &
+!ESC!       P_RAREA => GMTR_p_RAREA, &
+!ESC!       W1      => GMTR_t_W1,    &
+!ESC!       W2      => GMTR_t_W2,    &
+!ESC!       W3      => GMTR_t_W3,    &
+!ESC!       HNX     => GMTR_a_HNX,   &
+!ESC!       GMTR_p_nmax,             &
+!ESC!       GMTR_t_nmax,             &
+!ESC!       GMTR_a_nmax,             &
+!ESC!       GMTR_a_nmax_pl
+  implicit none
+
+  real(RP), intent(in)  :: GMTR_p      (ADM_gall   ,K0,ADM_lall   ,      GMTR_p_nmax   )
+  real(RP), intent(in)  :: GMTR_p_pl   (ADM_gall_pl,K0,ADM_lall_pl,      GMTR_p_nmax   )
+  real(RP), intent(in)  :: GMTR_t      (ADM_gall   ,K0,ADM_lall   ,TI:TJ,GMTR_t_nmax   )
+  real(RP), intent(in)  :: GMTR_t_pl   (ADM_gall_pl,K0,ADM_lall_pl,      GMTR_t_nmax   )
+  real(RP), intent(in)  :: GMTR_a      (ADM_gall   ,K0,ADM_lall   ,AI:AJ,GMTR_a_nmax   )
+  real(RP), intent(in)  :: GMTR_a_pl   (ADM_gall_pl,K0,ADM_lall_pl,      GMTR_a_nmax_pl)
+  real(RP), intent(out) :: coef_grad   (ADM_gall,0:6        ,ADM_nxyz,ADM_lall   )
+  real(RP), intent(out) :: coef_grad_pl(         0:ADM_vlink,ADM_nxyz,ADM_lall_pl)
+
+  integer  :: gmin, gmax, iall, gall, nxyz, lall
+
+  integer  :: ij
+  integer  :: ip1j, ijp1, ip1jp1
+  integer  :: im1j, ijm1, im1jm1
+
+  real(RP) :: coef
+  integer  :: g, l, d, n, v, hn
+  !---------------------------------------------------------------------------
+
+\end{LstF90}
+%
+Input arguments are the same with subroutine \src{OPRT_divergence_setup}
+and \src{OPRT_rotation_setup}, the metrics calculated by the subroutines
+described before in this section.
+%
+Output arguments \src{coef_grad} and \src{coef_grad_pl} are the
+coefficients for the gradient operator for the normal region and the
+pole region, respectively.
+%
+The second dimension of \src{coef_grad} has the range \src{0:6}, which
+corresponds to the 7-point stencil calculation.
+%
+Also the second dimension of \src{coef_grad_pl} has the range
+\src{0:ADM_vlink} where \src{ADM_vlink} is $5$, corresponds to the
+6-point stencil calculation.
+%
+Note that the pole region is a pentagon.
+
+
+The procedure of this  subroutine is consist of three parts.
+The first part is as follows.
+
+\begin{LstF90}[name=OPRT_gradient_setup,firstnumber=last]
+  !if( IO_L ) write(IO_FID_LOG,*) '*** setup coefficient of gradient operator'
+
+  gmin = (ADM_gmin-1)*ADM_gall_1d + ADM_gmin
+  gmax = (ADM_gmax-1)*ADM_gall_1d + ADM_gmax
+  iall = ADM_gall_1d
+  gall = ADM_gall
+  nxyz = ADM_nxyz
+  lall = ADM_lall
+
+  !$omp parallel workshare
+  coef_grad   (:,:,:,:) = 0.0_RP
+  !$omp end parallel workshare
+  coef_grad_pl(  :,:,:) = 0.0_RP
+
+  !$omp parallel default(none),private(g,d,l,hn,ij,ip1j,ip1jp1,ijp1,im1j,ijm1,im1jm1), &
+  !$omp shared(ADM_have_sgp,gmin,gmax,iall,gall,nxyz,lall,coef_grad,GMTR_p,GMTR_t,GMTR_a)
+  do l = 1, lall
+  do d = 1, nxyz
+     hn = d + HNX - 1
+
+     !$omp do
+     do g = gmin, gmax
+        ij     = g
+        ip1j   = g + 1
+        ip1jp1 = g + iall + 1
+        ijp1   = g + iall
+        im1j   = g - 1
+        im1jm1 = g - iall - 1
+        ijm1   = g - iall
+
+        ! ij
+        coef_grad(ij,0,d,l) = ( + GMTR_t(ij    ,k0,l,TI,W1) * GMTR_a(ij    ,k0,l,AI ,hn) & ! Q1 * b6
+                                + GMTR_t(ij    ,k0,l,TI,W1) * GMTR_a(ij    ,k0,l,AIJ,hn) & ! Q1 * b1
+                                + GMTR_t(ij    ,k0,l,TJ,W1) * GMTR_a(ij    ,k0,l,AIJ,hn) & ! Q2 * b1
+                                + GMTR_t(ij    ,k0,l,TJ,W1) * GMTR_a(ij    ,k0,l,AJ ,hn) & ! Q2 * b2
+                                + GMTR_t(im1j  ,k0,l,TI,W2) * GMTR_a(ij    ,k0,l,AJ ,hn) & ! Q3 * b2
+                                - GMTR_t(im1j  ,k0,l,TI,W2) * GMTR_a(im1j  ,k0,l,AI ,hn) & ! Q3 * b3
+                                - GMTR_t(im1jm1,k0,l,TJ,W2) * GMTR_a(im1j  ,k0,l,AI ,hn) & ! Q4 * b3
+                                - GMTR_t(im1jm1,k0,l,TI,W3) * GMTR_a(im1jm1,k0,l,AIJ,hn) & ! Q4 * b4
+                                - GMTR_t(im1jm1,k0,l,TJ,W2) * GMTR_a(im1jm1,k0,l,AIJ,hn) & ! Q5 * b4
+                                - GMTR_t(im1jm1,k0,l,TI,W3) * GMTR_a(ijm1  ,k0,l,AJ ,hn) & ! Q5 * b5
+                                - GMTR_t(ijm1  ,k0,l,TJ,W3) * GMTR_a(ijm1  ,k0,l,AJ ,hn) & ! Q6 * b5
+                                + GMTR_t(ijm1  ,k0,l,TJ,W3) * GMTR_a(ij    ,k0,l,AI ,hn) & ! Q6 * b6
+                                - 2.0_RP * GMTR_a(ij    ,k0,l,AIJ,hn)                    & ! P0 * b1
+                                - 2.0_RP * GMTR_a(ij    ,k0,l,AJ ,hn)                    & ! P0 * b2
+                                + 2.0_RP * GMTR_a(im1j  ,k0,l,AI ,hn)                    & ! P0 * b3
+                                + 2.0_RP * GMTR_a(im1jm1,k0,l,AIJ,hn)                    & ! P0 * b4
+                                + 2.0_RP * GMTR_a(ijm1  ,k0,l,AJ ,hn)                    & ! P0 * b5
+                                - 2.0_RP * GMTR_a(ij    ,k0,l,AI ,hn)                    & ! P0 * b6
+                              ) * 0.5_RP * GMTR_p(ij,k0,l,P_RAREA)
+        ! ip1j
+        coef_grad(ij,1,d,l) = ( - GMTR_t(ijm1  ,k0,l,TJ,W2) * GMTR_a(ijm1  ,k0,l,AJ ,hn) & ! Q6 * b5
+                                + GMTR_t(ijm1  ,k0,l,TJ,W2) * GMTR_a(ij    ,k0,l,AI ,hn) & ! Q6 * b6
+                                + GMTR_t(ij    ,k0,l,TI,W2) * GMTR_a(ij    ,k0,l,AI ,hn) & ! Q1 * b6
+                                + GMTR_t(ij    ,k0,l,TI,W2) * GMTR_a(ij    ,k0,l,AIJ,hn) & ! Q1 * b1
+                              ) * 0.5_RP * GMTR_p(ij,k0,l,P_RAREA)
+        ! ip1jp1
+        coef_grad(ij,2,d,l) = ( + GMTR_t(ij    ,k0,l,TI,W3) * GMTR_a(ij    ,k0,l,AI ,hn) & ! Q1 * b6
+                                + GMTR_t(ij    ,k0,l,TI,W3) * GMTR_a(ij    ,k0,l,AIJ,hn) & ! Q1 * b1
+                                + GMTR_t(ij    ,k0,l,TJ,W2) * GMTR_a(ij    ,k0,l,AIJ,hn) & ! Q2 * b1
+                                + GMTR_t(ij    ,k0,l,TJ,W2) * GMTR_a(ij    ,k0,l,AJ ,hn) & ! Q2 * b2
+                              ) * 0.5_RP * GMTR_p(ij,k0,l,P_RAREA)
+        ! ijp1
+        coef_grad(ij,3,d,l) = ( + GMTR_t(ij    ,k0,l,TJ,W3) * GMTR_a(ij    ,k0,l,AIJ,hn) & ! Q2 * b1
+                                + GMTR_t(ij    ,k0,l,TJ,W3) * GMTR_a(ij    ,k0,l,AJ ,hn) & ! Q2 * b2
+                                + GMTR_t(im1j  ,k0,l,TI,W3) * GMTR_a(ij    ,k0,l,AJ ,hn) & ! Q3 * b2
+                                - GMTR_t(im1j  ,k0,l,TI,W3) * GMTR_a(im1j  ,k0,l,AI ,hn) & ! Q3 * b3
+                              ) * 0.5_RP * GMTR_p(ij,k0,l,P_RAREA)
+        ! im1j
+        coef_grad(ij,4,d,l) = ( + GMTR_t(im1j  ,k0,l,TI,W1) * GMTR_a(ij    ,k0,l,AJ ,hn) & ! Q3 * b2
+                                - GMTR_t(im1j  ,k0,l,TI,W1) * GMTR_a(im1j  ,k0,l,AI ,hn) & ! Q3 * b3
+                                - GMTR_t(im1jm1,k0,l,TJ,W3) * GMTR_a(im1j  ,k0,l,AI ,hn) & ! Q4 * b3
+                                - GMTR_t(im1jm1,k0,l,TJ,W3) * GMTR_a(im1jm1,k0,l,AIJ,hn) & ! Q4 * b4
+                              ) * 0.5_RP * GMTR_p(ij,k0,l,P_RAREA)
+        ! im1jm1
+        coef_grad(ij,5,d,l) = ( - GMTR_t(im1jm1,k0,l,TJ,W1) * GMTR_a(im1j  ,k0,l,AI ,hn) & ! Q4 * b3
+                                - GMTR_t(im1jm1,k0,l,TJ,W1) * GMTR_a(im1jm1,k0,l,AIJ,hn) & ! Q4 * b4
+                                - GMTR_t(im1jm1,k0,l,TI,W1) * GMTR_a(im1jm1,k0,l,AIJ,hn) & ! Q5 * b4
+                                - GMTR_t(im1jm1,k0,l,TI,W1) * GMTR_a(ijm1  ,k0,l,AJ ,hn) & ! Q5 * b5
+                              ) * 0.5_RP * GMTR_p(ij,k0,l,P_RAREA)
+        ! ijm1
+        coef_grad(ij,6,d,l) = ( - GMTR_t(im1jm1,k0,l,TI,W2) * GMTR_a(im1jm1,k0,l,AIJ,hn) & ! Q5 * b4
+                                - GMTR_t(im1jm1,k0,l,TI,W2) * GMTR_a(ijm1  ,k0,l,AJ ,hn) & ! Q5 * b5
+                                - GMTR_t(ijm1  ,k0,l,TJ,W1) * GMTR_a(ijm1  ,k0,l,AJ ,hn) & ! Q6 * b5
+                                + GMTR_t(ijm1  ,k0,l,TJ,W1) * GMTR_a(ij    ,k0,l,AI ,hn) & ! Q6 * b6
+                              ) * 0.5_RP * GMTR_p(ij,k0,l,P_RAREA)
+     enddo
+     !$omp end do
+
+\end{LstF90}
+%
+The first part above and the second part below are in a long $l$-loop.
+%
+In the $g$-loop represents horizontal index, 7 coefficients are
+calculated separately from the various metrics.
+
+The second part is as follows.
+
+\begin{LstF90}[name=OPRT_gradient_setup,firstnumber=last]
+     if ( ADM_have_sgp(l) ) then ! pentagon
+        !$omp master
+        ij     = gmin
+        ip1j   = gmin + 1
+        ip1jp1 = gmin + iall + 1
+        ijp1   = gmin + iall
+        im1j   = gmin - 1
+        im1jm1 = gmin - iall - 1
+        ijm1   = gmin - iall
+
+        ! ij
+        coef_grad(ij,0,d,l) = ( + GMTR_t(ij    ,k0,l,TI,W1) * GMTR_a(ij    ,k0,l,AI ,hn) & ! Q1 * b6
+                                + GMTR_t(ij    ,k0,l,TI,W1) * GMTR_a(ij    ,k0,l,AIJ,hn) & ! Q1 * b1
+                                + GMTR_t(ij    ,k0,l,TJ,W1) * GMTR_a(ij    ,k0,l,AIJ,hn) & ! Q2 * b1
+                                + GMTR_t(ij    ,k0,l,TJ,W1) * GMTR_a(ij    ,k0,l,AJ ,hn) & ! Q2 * b2
+                                + GMTR_t(im1j  ,k0,l,TI,W2) * GMTR_a(ij    ,k0,l,AJ ,hn) & ! Q3 * b2
+                                - GMTR_t(im1j  ,k0,l,TI,W2) * GMTR_a(im1j  ,k0,l,AI ,hn) & ! Q3 * b3
+                                - GMTR_t(im1jm1,k0,l,TJ,W2) * GMTR_a(im1j  ,k0,l,AI ,hn) & ! Q4 * b3
+                                - GMTR_t(im1jm1,k0,l,TJ,W2) * GMTR_a(im1jm1,k0,l,AIJ,hn) & ! Q4 * b4
+                                - GMTR_t(ijm1  ,k0,l,TJ,W3) * GMTR_a(im1jm1,k0,l,AIJ,hn) & ! Q6 * b4
+                                + GMTR_t(ijm1  ,k0,l,TJ,W3) * GMTR_a(ij    ,k0,l,AI ,hn) & ! Q6 * b6
+                                - 2.0_RP * GMTR_a(ij    ,k0,l,AIJ,hn)                    & ! P0 * b1
+                                - 2.0_RP * GMTR_a(ij    ,k0,l,AJ ,hn)                    & ! P0 * b2
+                                + 2.0_RP * GMTR_a(im1j  ,k0,l,AI ,hn)                    & ! P0 * b3
+                                + 2.0_RP * GMTR_a(im1jm1,k0,l,AIJ,hn)                    & ! P0 * b4
+                                - 2.0_RP * GMTR_a(ij    ,k0,l,AI ,hn)                    & ! P0 * b6
+                              ) * 0.5_RP * GMTR_p(ij,k0,l,P_RAREA)
+        ! ip1j
+        coef_grad(ij,1,d,l) = ( - GMTR_t(ijm1  ,k0,l,TJ,W2) * GMTR_a(im1jm1,k0,l,AIJ,hn) & ! Q6 * b4
+                                + GMTR_t(ijm1  ,k0,l,TJ,W2) * GMTR_a(ij    ,k0,l,AI ,hn) & ! Q6 * b6
+                                + GMTR_t(ij    ,k0,l,TI,W2) * GMTR_a(ij    ,k0,l,AI ,hn) & ! Q1 * b6
+                                + GMTR_t(ij    ,k0,l,TI,W2) * GMTR_a(ij    ,k0,l,AIJ,hn) & ! Q1 * b1
+                              ) * 0.5_RP * GMTR_p(ij,k0,l,P_RAREA)
+        ! ip1jp1
+        coef_grad(ij,2,d,l) = ( + GMTR_t(ij    ,k0,l,TI,W3) * GMTR_a(ij    ,k0,l,AI ,hn) & ! Q1 * b6
+                                + GMTR_t(ij    ,k0,l,TI,W3) * GMTR_a(ij    ,k0,l,AIJ,hn) & ! Q1 * b1
+                                + GMTR_t(ij    ,k0,l,TJ,W2) * GMTR_a(ij    ,k0,l,AIJ,hn) & ! Q2 * b1
+                                + GMTR_t(ij    ,k0,l,TJ,W2) * GMTR_a(ij    ,k0,l,AJ ,hn) & ! Q2 * b2
+                              ) * 0.5_RP * GMTR_p(ij,k0,l,P_RAREA)
+        ! ijp1
+        coef_grad(ij,3,d,l) = ( + GMTR_t(ij    ,k0,l,TJ,W3) * GMTR_a(ij    ,k0,l,AIJ,hn) & ! Q2 * b1
+                                + GMTR_t(ij    ,k0,l,TJ,W3) * GMTR_a(ij    ,k0,l,AJ ,hn) & ! Q2 * b2
+                                + GMTR_t(im1j  ,k0,l,TI,W3) * GMTR_a(ij    ,k0,l,AJ ,hn) & ! Q3 * b2
+                                - GMTR_t(im1j  ,k0,l,TI,W3) * GMTR_a(im1j  ,k0,l,AI ,hn) & ! Q3 * b3
+                              ) * 0.5_RP * GMTR_p(ij,k0,l,P_RAREA)
+        ! im1j
+        coef_grad(ij,4,d,l) = ( + GMTR_t(im1j  ,k0,l,TI,W1) * GMTR_a(ij    ,k0,l,AJ ,hn) & ! Q3 * b2
+                                - GMTR_t(im1j  ,k0,l,TI,W1) * GMTR_a(im1j  ,k0,l,AI ,hn) & ! Q3 * b3
+                                - GMTR_t(im1jm1,k0,l,TJ,W3) * GMTR_a(im1j  ,k0,l,AI ,hn) & ! Q4 * b3
+                                - GMTR_t(im1jm1,k0,l,TJ,W3) * GMTR_a(im1jm1,k0,l,AIJ,hn) & ! Q4 * b4
+                              ) * 0.5_RP * GMTR_p(ij,k0,l,P_RAREA)
+        ! im1jm1
+        coef_grad(ij,5,d,l) = ( - GMTR_t(im1jm1,k0,l,TJ,W1) * GMTR_a(im1j  ,k0,l,AI ,hn) & ! Q4 * b3
+                                - GMTR_t(im1jm1,k0,l,TJ,W1) * GMTR_a(im1jm1,k0,l,AIJ,hn) & ! Q4 * b4
+                              ) * 0.5_RP * GMTR_p(ij,k0,l,P_RAREA)
+        ! ijm1
+        coef_grad(ij,6,d,l) = ( - GMTR_t(ijm1  ,k0,l,TJ,W1) * GMTR_a(im1jm1,k0,l,AIJ,hn) & ! Q6 * b4
+                                + GMTR_t(ijm1  ,k0,l,TJ,W1) * GMTR_a(ij    ,k0,l,AI ,hn) & ! Q6 * b6
+                              ) * 0.5_RP * GMTR_p(ij,k0,l,P_RAREA)
+        !$omp end master
+     endif
+
+  enddo ! loop d
+  enddo ! loop l
+  !$omp end parallel
+
+\end{LstF90}
+%
+This section is for the singular point.
+%
+Note that \src{ADM_have_sgp(1)}  is true.
+
+
+The last section of this subroutine is for the pole region and is as
+follows.
+
+\begin{LstF90}[name=OPRT_gradient_setup,firstnumber=last]
+  if ( ADM_have_pl ) then
+     n = ADM_gslf_pl
+
+     do l = 1, ADM_lall_pl
+     do d = 1, ADM_nxyz
+        hn = d + HNX - 1
+
+        coef = 0.0_RP
+        do v = ADM_gmin_pl, ADM_gmax_pl
+           ij   = v
+           ijp1 = v + 1
+           if( ijp1 == ADM_gmax_pl + 1 ) ijp1 = ADM_gmin_pl
+
+           coef = coef + 2.0_RP * ( GMTR_t_pl(ij,k0,l,W1) - 1.0_RP ) * GMTR_a_pl(ijp1,k0,l,hn)
+        enddo
+        coef_grad_pl(0,d,l) = coef * 0.5_RP * GMTR_p_pl(n,k0,l,P_RAREA)
+
+        do v = ADM_gmin_pl, ADM_gmax_pl
+           ij   = v
+           ijp1 = v + 1
+           ijm1 = v - 1
+           if( ijp1 == ADM_gmax_pl + 1 ) ijp1 = ADM_gmin_pl
+           if( ijm1 == ADM_gmin_pl - 1 ) ijm1 = ADM_gmax_pl
+
+           coef_grad_pl(v-1,d,l) = ( + GMTR_t_pl(ijm1,k0,l,W3) * GMTR_a_pl(ijm1,k0,l,hn) &
+                                     + GMTR_t_pl(ijm1,k0,l,W3) * GMTR_a_pl(ij  ,k0,l,hn) &
+                                     + GMTR_t_pl(ij  ,k0,l,W2) * GMTR_a_pl(ij  ,k0,l,hn) &
+                                     + GMTR_t_pl(ij  ,k0,l,W2) * GMTR_a_pl(ijp1,k0,l,hn) &
+                                   ) * 0.5_RP * GMTR_p_pl(n,k0,l,P_RAREA)
+        enddo
+     enddo ! loop d
+     enddo ! loop l
+  endif
+
+  return
+end subroutine OPRT_gradient_setup
+\end{LstF90}
+%
+Note the data layout of coefficient is slightly different between the normal region and the pole region,
+First dimension of \src{coef_grad_pl} corresponds to the second dimention of \src{coef_grad}.
+%
+The range of index \src{v} of the inner-most loop are \src{ADM_gmin_pl} and \src{ADM_gmax_pl},
+which means the five grids surrounding the pole point.
+
+
+
+\subsubsection{\src{OPRT_laplacian_setup}}
+
+This subroutine is also similar to the previous three subroutines, but
+this one is for the lapracian operator, subroutine \src{OPRT_laplacian}.
+
+
+Argument lists and local variables definition part of this subroutine is
+as follows.
+
+
+\begin{LstF90}[name=OPRT_lapracian_setup]
+subroutine OPRT_laplacian_setup( &
+     GMTR_p,   GMTR_p_pl,  &
+     GMTR_t,   GMTR_t_pl,  &
+     GMTR_a,   GMTR_a_pl,  &
+     coef_lap, coef_lap_pl )
+!ESC!    use mod_adm, only: &
+!ESC!       ADM_have_pl,  &
+!ESC!       ADM_have_sgp, &
+!ESC!       ADM_gall_1d,  &
+!ESC!       ADM_gmin,     &
+!ESC!       ADM_gmax,     &
+!ESC!       ADM_gslf_pl,  &
+!ESC!       ADM_gmin_pl,  &
+!ESC!       ADM_gmax_pl
+!ESC!    use mod_gmtr, only: &
+!ESC!       P_RAREA => GMTR_p_RAREA, &
+!ESC!       T_RAREA => GMTR_t_RAREA, &
+!ESC!       HNX     => GMTR_a_HNX,   &
+!ESC!       TNX     => GMTR_a_TNX,   &
+!ESC!       TN2X    => GMTR_a_TN2X,  &
+!ESC!       GMTR_p_nmax,             &
+!ESC!       GMTR_t_nmax,             &
+!ESC!       GMTR_a_nmax,             &
+!ESC!       GMTR_a_nmax_pl
+  implicit none
+
+  real(RP), intent(in)  :: GMTR_p     (ADM_gall   ,K0,ADM_lall   ,      GMTR_p_nmax   )
+  real(RP), intent(in)  :: GMTR_p_pl  (ADM_gall_pl,K0,ADM_lall_pl,      GMTR_p_nmax   )
+  real(RP), intent(in)  :: GMTR_t     (ADM_gall   ,K0,ADM_lall   ,TI:TJ,GMTR_t_nmax   )
+  real(RP), intent(in)  :: GMTR_t_pl  (ADM_gall_pl,K0,ADM_lall_pl,      GMTR_t_nmax   )
+  real(RP), intent(in)  :: GMTR_a     (ADM_gall   ,K0,ADM_lall   ,AI:AJ,GMTR_a_nmax   )
+  real(RP), intent(in)  :: GMTR_a_pl  (ADM_gall_pl,K0,ADM_lall_pl,      GMTR_a_nmax_pl)
+  real(RP), intent(out) :: coef_lap   (ADM_gall,0:6        ,ADM_lall   )
+  real(RP), intent(out) :: coef_lap_pl(         0:ADM_vlink,ADM_lall_pl)
+
+  integer  :: gmin, gmax, iall, gall, nxyz, lall
+
+  integer  :: ij
+  integer  :: ip1j, ijp1, ip1jp1
+  integer  :: im1j, ijm1, im1jm1
+
+  integer  :: g, l, d, n, v, hn, tn, tn2
+  !---------------------------------------------------------------------------
+
+\end{LstF90}
+%
+Input arguments are the same with the previous three subroutines, the
+metrics calculated by the subroutines described before in this section.
+%
+But the output argument \src{coef_lap} and \src{coef_lap_pl} have the
+different shape with the previous ones, such as \src{coef_div} and
+\src{coef_div_pl}.
+%
+Since the laplacian operator is the second order differentiation, different from the
+divergence, rotation, gradient, these are the first order, and the result
+is a scalar, not a vector, there are no need to specify the 3-D
+direction, which are the third dimension of such as \src{coef_div}.
+%
+Instead of that, calculation of the coefficient must include the
+contribution of more grid points than the operator of the first order
+differentiation.
+
+
+The procedure of this  subroutine is consist of three parts.
+The first part is as follows.
+
+\begin{LstF90}[name=OPRT_lapracian_setup,firstnumber=last]
+  !if( IO_L ) write(IO_FID_LOG,*) '*** setup coefficient of laplacian operator'
+
+  gmin = (ADM_gmin-1)*ADM_gall_1d + ADM_gmin
+  gmax = (ADM_gmax-1)*ADM_gall_1d + ADM_gmax
+  iall = ADM_gall_1d
+  gall = ADM_gall
+  nxyz = ADM_nxyz
+  lall = ADM_lall
+
+  !$omp parallel workshare
+  coef_lap   (:,:,:) = 0.0_RP
+  !$omp end parallel workshare
+  coef_lap_pl(  :,:) = 0.0_RP
+
+  !$omp parallel default(none),private(g,d,l,hn,tn,ij,ip1j,ip1jp1,ijp1,im1j,ijm1,im1jm1), &
+  !$omp shared(ADM_have_sgp,gmin,gmax,iall,gall,nxyz,lall,coef_lap,GMTR_p,GMTR_t,GMTR_a)
+  do l = 1, lall
+
+     do d = 1, nxyz
+        hn = d + HNX - 1
+        tn = d + TNX - 1
+
+        !$omp do
+        do g = gmin, gmax
+           ij     = g
+           ip1j   = g + 1
+           ip1jp1 = g + iall + 1
+           ijp1   = g + iall
+           im1j   = g - 1
+           im1jm1 = g - iall - 1
+           ijm1   = g - iall
+
+           ! ij
+           coef_lap(ij,0,l) = coef_lap(ij,0,l) &
+                            + GMTR_t(ij    ,k0,l,TI,T_RAREA) &
+                            * ( - 1.0_RP * GMTR_a(ij    ,k0,l,AI ,tn) * GMTR_a(ij    ,k0,l,AI ,hn) &
+                                + 2.0_RP * GMTR_a(ip1j  ,k0,l,AJ ,tn) * GMTR_a(ij    ,k0,l,AI ,hn) &
+                                + 1.0_RP * GMTR_a(ij    ,k0,l,AIJ,tn) * GMTR_a(ij    ,k0,l,AI ,hn) &
+                                - 1.0_RP * GMTR_a(ij    ,k0,l,AI ,tn) * GMTR_a(ij    ,k0,l,AIJ,hn) &
+                                + 2.0_RP * GMTR_a(ip1j  ,k0,l,AJ ,tn) * GMTR_a(ij    ,k0,l,AIJ,hn) &
+                                + 1.0_RP * GMTR_a(ij    ,k0,l,AIJ,tn) * GMTR_a(ij    ,k0,l,AIJ,hn) )
+
+           coef_lap(ij,0,l) = coef_lap(ij,0,l) &
+                            + GMTR_t(ij    ,k0,l,TJ,T_RAREA) &
+                            * ( - 1.0_RP * GMTR_a(ij    ,k0,l,AIJ,tn) * GMTR_a(ij    ,k0,l,AIJ,hn) &
+                                - 2.0_RP * GMTR_a(ijp1  ,k0,l,AI ,tn) * GMTR_a(ij    ,k0,l,AIJ,hn) &
+                                + 1.0_RP * GMTR_a(ij    ,k0,l,AJ ,tn) * GMTR_a(ij    ,k0,l,AIJ,hn) &
+                                - 1.0_RP * GMTR_a(ij    ,k0,l,AIJ,tn) * GMTR_a(ij    ,k0,l,AJ ,hn) &
+                                - 2.0_RP * GMTR_a(ijp1  ,k0,l,AI ,tn) * GMTR_a(ij    ,k0,l,AJ ,hn) &
+                                + 1.0_RP * GMTR_a(ij    ,k0,l,AJ ,tn) * GMTR_a(ij    ,k0,l,AJ ,hn) )
+
+           coef_lap(ij,0,l) = coef_lap(ij,0,l) &
+                            + GMTR_t(im1j  ,k0,l,TI,T_RAREA) &
+                            * ( - 1.0_RP * GMTR_a(ij    ,k0,l,AJ ,tn) * GMTR_a(ij    ,k0,l,AJ ,hn) &
+                                - 2.0_RP * GMTR_a(im1j  ,k0,l,AIJ,tn) * GMTR_a(ij    ,k0,l,AJ ,hn) &
+                                - 1.0_RP * GMTR_a(im1j  ,k0,l,AI ,tn) * GMTR_a(ij    ,k0,l,AJ ,hn) &
+                                + 1.0_RP * GMTR_a(ij    ,k0,l,AJ ,tn) * GMTR_a(im1j  ,k0,l,AI ,hn) &
+                                + 2.0_RP * GMTR_a(im1j  ,k0,l,AIJ,tn) * GMTR_a(im1j  ,k0,l,AI ,hn) &
+                                + 1.0_RP * GMTR_a(im1j  ,k0,l,AI ,tn) * GMTR_a(im1j  ,k0,l,AI ,hn) )
+
+           coef_lap(ij,0,l) = coef_lap(ij,0,l) &
+                            + GMTR_t(im1jm1,k0,l,TJ,T_RAREA) &
+                            * ( - 1.0_RP * GMTR_a(im1j  ,k0,l,AI ,tn) * GMTR_a(im1j  ,k0,l,AI ,hn) &
+                                + 2.0_RP * GMTR_a(im1jm1,k0,l,AJ ,tn) * GMTR_a(im1j  ,k0,l,AI ,hn) &
+                                + 1.0_RP * GMTR_a(im1jm1,k0,l,AIJ,tn) * GMTR_a(im1j  ,k0,l,AI ,hn) &
+                                - 1.0_RP * GMTR_a(im1j  ,k0,l,AI ,tn) * GMTR_a(im1jm1,k0,l,AIJ,hn) &
+                                + 2.0_RP * GMTR_a(im1jm1,k0,l,AJ ,tn) * GMTR_a(im1jm1,k0,l,AIJ,hn) &
+                                + 1.0_RP * GMTR_a(im1jm1,k0,l,AIJ,tn) * GMTR_a(im1jm1,k0,l,AIJ,hn) )
+
+           coef_lap(ij,0,l) = coef_lap(ij,0,l) &
+                            + GMTR_t(im1jm1,k0,l,TI,T_RAREA) &
+                            * ( - 1.0_RP * GMTR_a(im1jm1,k0,l,AIJ,tn) * GMTR_a(im1jm1,k0,l,AIJ,hn) &
+                                - 2.0_RP * GMTR_a(im1jm1,k0,l,AI ,tn) * GMTR_a(im1jm1,k0,l,AIJ,hn) &
+                                + 1.0_RP * GMTR_a(ijm1  ,k0,l,AJ ,tn) * GMTR_a(im1jm1,k0,l,AIJ,hn) &
+                                - 1.0_RP * GMTR_a(im1jm1,k0,l,AIJ,tn) * GMTR_a(ijm1  ,k0,l,AJ ,hn) &
+                                - 2.0_RP * GMTR_a(im1jm1,k0,l,AI ,tn) * GMTR_a(ijm1  ,k0,l,AJ ,hn) &
+                                + 1.0_RP * GMTR_a(ijm1  ,k0,l,AJ ,tn) * GMTR_a(ijm1  ,k0,l,AJ ,hn) )
+
+           coef_lap(ij,0,l) = coef_lap(ij,0,l) &
+                            + GMTR_t(ijm1  ,k0,l,TJ,T_RAREA) &
+                            * ( - 1.0_RP * GMTR_a(ijm1  ,k0,l,AJ ,tn) * GMTR_a(ijm1  ,k0,l,AJ ,hn) &
+                                - 2.0_RP * GMTR_a(ijm1  ,k0,l,AIJ,tn) * GMTR_a(ijm1  ,k0,l,AJ ,hn) &
+                                - 1.0_RP * GMTR_a(ij    ,k0,l,AI ,tn) * GMTR_a(ijm1  ,k0,l,AJ ,hn) &
+                                + 1.0_RP * GMTR_a(ijm1  ,k0,l,AJ ,tn) * GMTR_a(ij    ,k0,l,AI ,hn) &
+                                + 2.0_RP * GMTR_a(ijm1  ,k0,l,AIJ,tn) * GMTR_a(ij    ,k0,l,AI ,hn) &
+                                + 1.0_RP * GMTR_a(ij    ,k0,l,AI ,tn) * GMTR_a(ij    ,k0,l,AI ,hn) )
+
+           ! ip1j
+           coef_lap(ij,1,l) = coef_lap(ij,1,l) &
+                            + GMTR_t(ijm1  ,k0,l,TJ,T_RAREA) &
+                            * ( - 1.0_RP * GMTR_a(ij    ,k0,l,AI ,tn) * GMTR_a(ijm1  ,k0,l,AJ ,hn) &
+                                + 2.0_RP * GMTR_a(ijm1  ,k0,l,AJ ,tn) * GMTR_a(ijm1  ,k0,l,AJ ,hn) &
+                                + 1.0_RP * GMTR_a(ijm1  ,k0,l,AIJ,tn) * GMTR_a(ijm1  ,k0,l,AJ ,hn) &
+                                + 1.0_RP * GMTR_a(ij    ,k0,l,AI ,tn) * GMTR_a(ij    ,k0,l,AI ,hn) &
+                                - 2.0_RP * GMTR_a(ijm1  ,k0,l,AJ ,tn) * GMTR_a(ij    ,k0,l,AI ,hn) &
+                                - 1.0_RP * GMTR_a(ijm1  ,k0,l,AIJ,tn) * GMTR_a(ij    ,k0,l,AI ,hn) )
+
+           coef_lap(ij,1,l) = coef_lap(ij,1,l) &
+                            + GMTR_t(ij    ,k0,l,TI,T_RAREA) &
+                            * ( - 1.0_RP * GMTR_a(ip1j  ,k0,l,AJ ,tn) * GMTR_a(ij    ,k0,l,AI ,hn) &
+                                - 2.0_RP * GMTR_a(ij    ,k0,l,AIJ,tn) * GMTR_a(ij    ,k0,l,AI ,hn) &
+                                - 1.0_RP * GMTR_a(ij    ,k0,l,AI ,tn) * GMTR_a(ij    ,k0,l,AI ,hn) &
+                                - 1.0_RP * GMTR_a(ip1j  ,k0,l,AJ ,tn) * GMTR_a(ij    ,k0,l,AIJ,hn) &
+                                - 2.0_RP * GMTR_a(ij    ,k0,l,AIJ,tn) * GMTR_a(ij    ,k0,l,AIJ,hn) &
+                                - 1.0_RP * GMTR_a(ij    ,k0,l,AI ,tn) * GMTR_a(ij    ,k0,l,AIJ,hn) )
+
+           ! ip1jp1
+           coef_lap(ij,2,l) = coef_lap(ij,2,l) &
+                            + GMTR_t(ij    ,k0,l,TI,T_RAREA) &
+                            * ( + 1.0_RP * GMTR_a(ij    ,k0,l,AIJ,tn) * GMTR_a(ij    ,k0,l,AI ,hn) &
+                                + 2.0_RP * GMTR_a(ij    ,k0,l,AI ,tn) * GMTR_a(ij    ,k0,l,AI ,hn) &
+                                - 1.0_RP * GMTR_a(ip1j  ,k0,l,AJ ,tn) * GMTR_a(ij    ,k0,l,AI ,hn) &
+                                + 1.0_RP * GMTR_a(ij    ,k0,l,AIJ,tn) * GMTR_a(ij    ,k0,l,AIJ,hn) &
+                                + 2.0_RP * GMTR_a(ij    ,k0,l,AI ,tn) * GMTR_a(ij    ,k0,l,AIJ,hn) &
+                                - 1.0_RP * GMTR_a(ip1j  ,k0,l,AJ ,tn) * GMTR_a(ij    ,k0,l,AIJ,hn) )
+
+           coef_lap(ij,2,l) = coef_lap(ij,2,l) &
+                            + GMTR_t(ij    ,k0,l,TJ,T_RAREA) &
+                            * ( + 1.0_RP * GMTR_a(ijp1  ,k0,l,AI ,tn) * GMTR_a(ij    ,k0,l,AIJ,hn) &
+                                - 2.0_RP * GMTR_a(ij    ,k0,l,AJ ,tn) * GMTR_a(ij    ,k0,l,AIJ,hn) &
+                                - 1.0_RP * GMTR_a(ij    ,k0,l,AIJ,tn) * GMTR_a(ij    ,k0,l,AIJ,hn) &
+                                + 1.0_RP * GMTR_a(ijp1  ,k0,l,AI ,tn) * GMTR_a(ij    ,k0,l,AJ ,hn) &
+                                - 1.0_RP * GMTR_a(ij    ,k0,l,AIJ,tn) * GMTR_a(ij    ,k0,l,AJ ,hn) &
+                                - 2.0_RP * GMTR_a(ij    ,k0,l,AJ ,tn) * GMTR_a(ij    ,k0,l,AJ ,hn) )
+
+           ! ijp1
+           coef_lap(ij,3,l) = coef_lap(ij,3,l) &
+                            + GMTR_t(ij    ,k0,l,TJ,T_RAREA) &
+                            * ( + 1.0_RP * GMTR_a(ij    ,k0,l,AJ ,tn) * GMTR_a(ij    ,k0,l,AIJ,hn) &
+                                + 2.0_RP * GMTR_a(ij    ,k0,l,AIJ,tn) * GMTR_a(ij    ,k0,l,AIJ,hn) &
+                                + 1.0_RP * GMTR_a(ijp1  ,k0,l,AI ,tn) * GMTR_a(ij    ,k0,l,AIJ,hn) &
+                                + 1.0_RP * GMTR_a(ij    ,k0,l,AJ ,tn) * GMTR_a(ij    ,k0,l,AJ ,hn) &
+                                + 2.0_RP * GMTR_a(ij    ,k0,l,AIJ,tn) * GMTR_a(ij    ,k0,l,AJ ,hn) &
+                                + 1.0_RP * GMTR_a(ijp1  ,k0,l,AI ,tn) * GMTR_a(ij    ,k0,l,AJ ,hn) )
+
+           coef_lap(ij,3,l) = coef_lap(ij,3,l) &
+                            + GMTR_t(im1j  ,k0,l,TI,T_RAREA) &
+                            * ( + 1.0_RP * GMTR_a(im1j  ,k0,l,AIJ,tn) * GMTR_a(ij    ,k0,l,AJ ,hn) &
+                                + 2.0_RP * GMTR_a(im1j  ,k0,l,AI ,tn) * GMTR_a(ij    ,k0,l,AJ ,hn) &
+                                - 1.0_RP * GMTR_a(ij    ,k0,l,AJ ,tn) * GMTR_a(ij    ,k0,l,AJ ,hn) &
+                                - 1.0_RP * GMTR_a(im1j  ,k0,l,AIJ,tn) * GMTR_a(im1j  ,k0,l,AI ,hn) &
+                                - 2.0_RP * GMTR_a(im1j  ,k0,l,AI ,tn) * GMTR_a(im1j  ,k0,l,AI ,hn) &
+                                + 1.0_RP * GMTR_a(ij    ,k0,l,AJ ,tn) * GMTR_a(im1j  ,k0,l,AI ,hn) )
+
+           ! im1j
+           coef_lap(ij,4,l) = coef_lap(ij,4,l) &
+                            + GMTR_t(im1j  ,k0,l,TI,T_RAREA) &
+                            * ( - 1.0_RP * GMTR_a(im1j  ,k0,l,AI ,tn) * GMTR_a(ij    ,k0,l,AJ ,hn) &
+                                + 2.0_RP * GMTR_a(ij    ,k0,l,AJ ,tn) * GMTR_a(ij    ,k0,l,AJ ,hn) &
+                                + 1.0_RP * GMTR_a(im1j  ,k0,l,AIJ,tn) * GMTR_a(ij    ,k0,l,AJ ,hn) &
+                                + 1.0_RP * GMTR_a(im1j  ,k0,l,AI ,tn) * GMTR_a(im1j  ,k0,l,AI ,hn) &
+                                - 2.0_RP * GMTR_a(ij    ,k0,l,AJ ,tn) * GMTR_a(im1j  ,k0,l,AI ,hn) &
+                                - 1.0_RP * GMTR_a(im1j  ,k0,l,AIJ,tn) * GMTR_a(im1j  ,k0,l,AI ,hn) )
+
+           coef_lap(ij,4,l) = coef_lap(ij,4,l) &
+                            + GMTR_t(im1jm1,k0,l,TJ,T_RAREA) &
+                            * ( - 1.0_RP * GMTR_a(im1jm1,k0,l,AJ ,tn) * GMTR_a(im1j  ,k0,l,AI ,hn) &
+                                - 2.0_RP * GMTR_a(im1jm1,k0,l,AIJ,tn) * GMTR_a(im1j  ,k0,l,AI ,hn) &
+                                - 1.0_RP * GMTR_a(im1j  ,k0,l,AI ,tn) * GMTR_a(im1j  ,k0,l,AI ,hn) &
+                                - 1.0_RP * GMTR_a(im1jm1,k0,l,AJ ,tn) * GMTR_a(im1jm1,k0,l,AIJ,hn) &
+                                - 2.0_RP * GMTR_a(im1jm1,k0,l,AIJ,tn) * GMTR_a(im1jm1,k0,l,AIJ,hn) &
+                                - 1.0_RP * GMTR_a(im1j  ,k0,l,AI ,tn) * GMTR_a(im1jm1,k0,l,AIJ,hn) )
+
+           ! im1jm1
+           coef_lap(ij,5,l) = coef_lap(ij,5,l) &
+                            + GMTR_t(im1jm1,k0,l,TJ,T_RAREA) &
+                            * ( + 1.0_RP * GMTR_a(im1jm1,k0,l,AIJ,tn) * GMTR_a(im1j  ,k0,l,AI ,hn) &
+                                + 2.0_RP * GMTR_a(im1j  ,k0,l,AI ,tn) * GMTR_a(im1j  ,k0,l,AI ,hn) &
+                                - 1.0_RP * GMTR_a(im1jm1,k0,l,AJ ,tn) * GMTR_a(im1j  ,k0,l,AI ,hn) &
+                                + 1.0_RP * GMTR_a(im1jm1,k0,l,AIJ,tn) * GMTR_a(im1jm1,k0,l,AIJ,hn) &
+                                + 2.0_RP * GMTR_a(im1j  ,k0,l,AI ,tn) * GMTR_a(im1jm1,k0,l,AIJ,hn) &
+                                - 1.0_RP * GMTR_a(im1jm1,k0,l,AJ ,tn) * GMTR_a(im1jm1,k0,l,AIJ,hn) )
+
+           coef_lap(ij,5,l) = coef_lap(ij,5,l) &
+                            + GMTR_t(im1jm1,k0,l,TI,T_RAREA) &
+                            * ( + 1.0_RP * GMTR_a(im1jm1,k0,l,AI ,tn) * GMTR_a(im1jm1,k0,l,AIJ,hn) &
+                                - 2.0_RP * GMTR_a(ijm1  ,k0,l,AJ ,tn) * GMTR_a(im1jm1,k0,l,AIJ,hn) &
+                                - 1.0_RP * GMTR_a(im1jm1,k0,l,AIJ,tn) * GMTR_a(im1jm1,k0,l,AIJ,hn) &
+                                + 1.0_RP * GMTR_a(im1jm1,k0,l,AI ,tn) * GMTR_a(ijm1  ,k0,l,AJ ,hn) &
+                                - 2.0_RP * GMTR_a(ijm1  ,k0,l,AJ ,tn) * GMTR_a(ijm1  ,k0,l,AJ ,hn) &
+                                - 1.0_RP * GMTR_a(im1jm1,k0,l,AIJ,tn) * GMTR_a(ijm1  ,k0,l,AJ ,hn) )
+
+           ! ijm1
+           coef_lap(ij,6,l) = coef_lap(ij,6,l) &
+                            + GMTR_t(im1jm1,k0,l,TI,T_RAREA) &
+                            * ( + 1.0_RP * GMTR_a(ijm1  ,k0,l,AJ ,tn) * GMTR_a(im1jm1,k0,l,AIJ,hn) &
+                                + 2.0_RP * GMTR_a(im1jm1,k0,l,AIJ,tn) * GMTR_a(im1jm1,k0,l,AIJ,hn) &
+                                + 1.0_RP * GMTR_a(im1jm1,k0,l,AI ,tn) * GMTR_a(im1jm1,k0,l,AIJ,hn) &
+                                + 1.0_RP * GMTR_a(ijm1  ,k0,l,AJ ,tn) * GMTR_a(ijm1  ,k0,l,AJ ,hn) &
+                                + 2.0_RP * GMTR_a(im1jm1,k0,l,AIJ,tn) * GMTR_a(ijm1  ,k0,l,AJ ,hn) &
+                                + 1.0_RP * GMTR_a(im1jm1,k0,l,AI ,tn) * GMTR_a(ijm1  ,k0,l,AJ ,hn) )
+
+           coef_lap(ij,6,l) = coef_lap(ij,6,l) &
+                            + GMTR_t(ijm1  ,k0,l,TJ,T_RAREA) &
+                            * ( + 1.0_RP * GMTR_a(ijm1  ,k0,l,AIJ,tn) * GMTR_a(ijm1  ,k0,l,AJ ,hn) &
+                                + 2.0_RP * GMTR_a(ij    ,k0,l,AI ,tn) * GMTR_a(ijm1  ,k0,l,AJ ,hn) &
+                                - 1.0_RP * GMTR_a(ijm1  ,k0,l,AJ ,tn) * GMTR_a(ijm1  ,k0,l,AJ ,hn) &
+                                - 1.0_RP * GMTR_a(ijm1  ,k0,l,AIJ,tn) * GMTR_a(ij    ,k0,l,AI ,hn) &
+                                - 2.0_RP * GMTR_a(ij    ,k0,l,AI ,tn) * GMTR_a(ij    ,k0,l,AI ,hn) &
+                                + 1.0_RP * GMTR_a(ijm1  ,k0,l,AJ ,tn) * GMTR_a(ij    ,k0,l,AI ,hn) )
+        enddo
+        !$omp end do
+     enddo ! loop d
+
+\end{LstF90}
+%
+The first part above and the second part below are in a long $l$-loop.
+%
+In the $g$-loop represents horizontal index, 7 coefficients are
+calculated separately from the various metrics.
+%
+Note that each 7 coefficients contains contribution from more grid
+points than previous operator subroutines.
+
+The second part is as follows.
+
+\begin{LstF90}[name=OPRT_lapracian_setup,firstnumber=last]
+     if ( ADM_have_sgp(l) ) then ! pentagon
+        !$omp master
+        coef_lap(gmin,0,l) = 0.0_RP
+        coef_lap(gmin,1,l) = 0.0_RP
+        coef_lap(gmin,2,l) = 0.0_RP
+        coef_lap(gmin,3,l) = 0.0_RP
+        coef_lap(gmin,4,l) = 0.0_RP
+        coef_lap(gmin,5,l) = 0.0_RP
+        coef_lap(gmin,6,l) = 0.0_RP
+
+        do d = 1, ADM_nxyz
+           hn = d + HNX - 1
+           tn = d + TNX - 1
+
+           ij     = gmin
+           ip1j   = gmin + 1
+           ip1jp1 = gmin + iall + 1
+           ijp1   = gmin + iall
+           im1j   = gmin - 1
+           im1jm1 = gmin - iall - 1
+           ijm1   = gmin - iall
+
+           ! ij
+           coef_lap(ij,0,l) = coef_lap(ij,0,l) &
+                            + GMTR_t(ij    ,k0,l,TI,T_RAREA) &
+                            * ( - 1.0_RP * GMTR_a(ij    ,k0,l,AI ,tn) * GMTR_a(ij    ,k0,l,AI ,hn) &
+                                + 2.0_RP * GMTR_a(ip1j  ,k0,l,AJ ,tn) * GMTR_a(ij    ,k0,l,AI ,hn) &
+                                + 1.0_RP * GMTR_a(ij    ,k0,l,AIJ,tn) * GMTR_a(ij    ,k0,l,AI ,hn) &
+                                - 1.0_RP * GMTR_a(ij    ,k0,l,AI ,tn) * GMTR_a(ij    ,k0,l,AIJ,hn) &
+                                + 2.0_RP * GMTR_a(ip1j  ,k0,l,AJ ,tn) * GMTR_a(ij    ,k0,l,AIJ,hn) &
+                                + 1.0_RP * GMTR_a(ij    ,k0,l,AIJ,tn) * GMTR_a(ij    ,k0,l,AIJ,hn) )
+
+           coef_lap(ij,0,l) = coef_lap(ij,0,l) &
+                            + GMTR_t(ij    ,k0,l,TJ,T_RAREA) &
+                            * ( - 1.0_RP * GMTR_a(ij    ,k0,l,AIJ,tn) * GMTR_a(ij    ,k0,l,AIJ,hn) &
+                                - 2.0_RP * GMTR_a(ijp1  ,k0,l,AI ,tn) * GMTR_a(ij    ,k0,l,AIJ,hn) &
+                                + 1.0_RP * GMTR_a(ij    ,k0,l,AJ ,tn) * GMTR_a(ij    ,k0,l,AIJ,hn) &
+                                - 1.0_RP * GMTR_a(ij    ,k0,l,AIJ,tn) * GMTR_a(ij    ,k0,l,AJ ,hn) &
+                                - 2.0_RP * GMTR_a(ijp1  ,k0,l,AI ,tn) * GMTR_a(ij    ,k0,l,AJ ,hn) &
+                                + 1.0_RP * GMTR_a(ij    ,k0,l,AJ ,tn) * GMTR_a(ij    ,k0,l,AJ ,hn) )
+
+           coef_lap(ij,0,l) = coef_lap(ij,0,l) &
+                            + GMTR_t(im1j  ,k0,l,TI,T_RAREA) &
+                            * ( - 1.0_RP * GMTR_a(ij    ,k0,l,AJ ,tn) * GMTR_a(ij    ,k0,l,AJ ,hn) &
+                                - 2.0_RP * GMTR_a(im1j  ,k0,l,AIJ,tn) * GMTR_a(ij    ,k0,l,AJ ,hn) &
+                                - 1.0_RP * GMTR_a(im1j  ,k0,l,AI ,tn) * GMTR_a(ij    ,k0,l,AJ ,hn) &
+                                + 1.0_RP * GMTR_a(ij    ,k0,l,AJ ,tn) * GMTR_a(im1j  ,k0,l,AI ,hn) &
+                                + 2.0_RP * GMTR_a(im1j  ,k0,l,AIJ,tn) * GMTR_a(im1j  ,k0,l,AI ,hn) &
+                                + 1.0_RP * GMTR_a(im1j  ,k0,l,AI ,tn) * GMTR_a(im1j  ,k0,l,AI ,hn) )
+
+           coef_lap(ij,0,l) = coef_lap(ij,0,l) &
+                            + GMTR_t(im1jm1,k0,l,TJ,T_RAREA) &
+                            * ( - 1.0_RP * GMTR_a(im1j  ,k0,l,AI ,tn) * GMTR_a(im1j  ,k0,l,AI ,hn) &
+                                + 2.0_RP * GMTR_a(im1jm1,k0,l,AJ ,tn) * GMTR_a(im1j  ,k0,l,AI ,hn) &
+                                + 1.0_RP * GMTR_a(im1jm1,k0,l,AIJ,tn) * GMTR_a(im1j  ,k0,l,AI ,hn) &
+                                - 1.0_RP * GMTR_a(im1j  ,k0,l,AI ,tn) * GMTR_a(im1jm1,k0,l,AIJ,hn) &
+                                + 2.0_RP * GMTR_a(im1jm1,k0,l,AJ ,tn) * GMTR_a(im1jm1,k0,l,AIJ,hn) &
+                                + 1.0_RP * GMTR_a(im1jm1,k0,l,AIJ,tn) * GMTR_a(im1jm1,k0,l,AIJ,hn) )
+
+           coef_lap(ij,0,l) = coef_lap(ij,0,l) &
+                            + GMTR_t(ijm1  ,k0,l,TJ,T_RAREA) &
+                            * ( - 1.0_RP * GMTR_a(ijm1  ,k0,l,AJ ,tn) * GMTR_a(im1jm1,k0,l,AIJ,hn) &
+                                - 2.0_RP * GMTR_a(ijm1  ,k0,l,AIJ,tn) * GMTR_a(im1jm1,k0,l,AIJ,hn) &
+                                - 1.0_RP * GMTR_a(ij    ,k0,l,AI ,tn) * GMTR_a(im1jm1,k0,l,AIJ,hn) &
+                                + 1.0_RP * GMTR_a(ijm1  ,k0,l,AJ ,tn) * GMTR_a(ij    ,k0,l,AI ,hn) &
+                                + 2.0_RP * GMTR_a(ijm1  ,k0,l,AIJ,tn) * GMTR_a(ij    ,k0,l,AI ,hn) &
+                                + 1.0_RP * GMTR_a(ij    ,k0,l,AI ,tn) * GMTR_a(ij    ,k0,l,AI ,hn) )
+
+           ! ip1j
+           coef_lap(ij,1,l) = coef_lap(ij,1,l) &
+                            + GMTR_t(ijm1  ,k0,l,TJ,T_RAREA) &
+                            * ( + 1.0_RP * GMTR_a(ijm1  ,k0,l,AIJ,tn) * GMTR_a(im1jm1,k0,l,AIJ,hn) &
+                                + 2.0_RP * GMTR_a(ijm1  ,k0,l,AJ ,tn) * GMTR_a(im1jm1,k0,l,AIJ,hn) &
+                                - 1.0_RP * GMTR_a(ij    ,k0,l,AI ,tn) * GMTR_a(im1jm1,k0,l,AIJ,hn) &
+                                - 1.0_RP * GMTR_a(ijm1  ,k0,l,AIJ,tn) * GMTR_a(ij    ,k0,l,AI ,hn) &
+                                - 2.0_RP * GMTR_a(ijm1  ,k0,l,AJ ,tn) * GMTR_a(ij    ,k0,l,AI ,hn) &
+                                + 1.0_RP * GMTR_a(ij    ,k0,l,AI ,tn) * GMTR_a(ij    ,k0,l,AI ,hn) )
+
+           coef_lap(ij,1,l) = coef_lap(ij,1,l) &
+                            + GMTR_t(ij    ,k0,l,TI,T_RAREA) &
+                            * ( - 1.0_RP * GMTR_a(ip1j  ,k0,l,AJ ,tn) * GMTR_a(ij    ,k0,l,AI ,hn) &
+                                - 2.0_RP * GMTR_a(ij    ,k0,l,AIJ,tn) * GMTR_a(ij    ,k0,l,AI ,hn) &
+                                - 1.0_RP * GMTR_a(ij    ,k0,l,AI ,tn) * GMTR_a(ij    ,k0,l,AI ,hn) &
+                                - 1.0_RP * GMTR_a(ip1j  ,k0,l,AJ ,tn) * GMTR_a(ij    ,k0,l,AIJ,hn) &
+                                - 2.0_RP * GMTR_a(ij    ,k0,l,AIJ,tn) * GMTR_a(ij    ,k0,l,AIJ,hn) &
+                                - 1.0_RP * GMTR_a(ij    ,k0,l,AI ,tn) * GMTR_a(ij    ,k0,l,AIJ,hn) )
+
+           ! ip1jp1
+           coef_lap(ij,2,l) = coef_lap(ij,2,l) &
+                            + GMTR_t(ij    ,k0,l,TI,T_RAREA) &
+                            * ( + 1.0_RP * GMTR_a(ij    ,k0,l,AIJ,tn) * GMTR_a(ij    ,k0,l,AI ,hn) &
+                                + 2.0_RP * GMTR_a(ij    ,k0,l,AI ,tn) * GMTR_a(ij    ,k0,l,AI ,hn) &
+                                - 1.0_RP * GMTR_a(ip1j  ,k0,l,AJ ,tn) * GMTR_a(ij    ,k0,l,AI ,hn) &
+                                + 1.0_RP * GMTR_a(ij    ,k0,l,AIJ,tn) * GMTR_a(ij    ,k0,l,AIJ,hn) &
+                                + 2.0_RP * GMTR_a(ij    ,k0,l,AI ,tn) * GMTR_a(ij    ,k0,l,AIJ,hn) &
+                                - 1.0_RP * GMTR_a(ip1j  ,k0,l,AJ ,tn) * GMTR_a(ij    ,k0,l,AIJ,hn) )
+
+           coef_lap(ij,2,l) = coef_lap(ij,2,l) &
+                            + GMTR_t(ij    ,k0,l,TJ,T_RAREA) &
+                            * ( + 1.0_RP * GMTR_a(ijp1  ,k0,l,AI ,tn) * GMTR_a(ij    ,k0,l,AIJ,hn) &
+                                - 2.0_RP * GMTR_a(ij    ,k0,l,AJ ,tn) * GMTR_a(ij    ,k0,l,AIJ,hn) &
+                                - 1.0_RP * GMTR_a(ij    ,k0,l,AIJ,tn) * GMTR_a(ij    ,k0,l,AIJ,hn) &
+                                + 1.0_RP * GMTR_a(ijp1  ,k0,l,AI ,tn) * GMTR_a(ij    ,k0,l,AJ ,hn) &
+                                - 2.0_RP * GMTR_a(ij    ,k0,l,AJ ,tn) * GMTR_a(ij    ,k0,l,AJ ,hn) &
+                                - 1.0_RP * GMTR_a(ij    ,k0,l,AIJ,tn) * GMTR_a(ij    ,k0,l,AJ ,hn) )
+
+           ! ijp1
+           coef_lap(ij,3,l) = coef_lap(ij,3,l) &
+                            + GMTR_t(ij    ,k0,l,TJ,T_RAREA) &
+                            * ( + 1.0_RP * GMTR_a(ijp1  ,k0,l,AI ,tn) * GMTR_a(ij    ,k0,l,AIJ,hn) &
+                                + 2.0_RP * GMTR_a(ij    ,k0,l,AIJ,tn) * GMTR_a(ij    ,k0,l,AIJ,hn) &
+                                + 1.0_RP * GMTR_a(ij    ,k0,l,AJ ,tn) * GMTR_a(ij    ,k0,l,AIJ,hn) &
+                                + 1.0_RP * GMTR_a(ijp1  ,k0,l,AI ,tn) * GMTR_a(ij    ,k0,l,AJ ,hn) &
+                                + 2.0_RP * GMTR_a(ij    ,k0,l,AIJ,tn) * GMTR_a(ij    ,k0,l,AJ ,hn) &
+                                + 1.0_RP * GMTR_a(ij    ,k0,l,AJ ,tn) * GMTR_a(ij    ,k0,l,AJ ,hn) )
+
+           coef_lap(ij,3,l) = coef_lap(ij,3,l) &
+                            + GMTR_t(im1j  ,k0,l,TI,T_RAREA) &
+                            * ( + 1.0_RP * GMTR_a(im1j  ,k0,l,AIJ,tn) * GMTR_a(ij    ,k0,l,AJ ,hn) &
+                                + 2.0_RP * GMTR_a(im1j  ,k0,l,AI ,tn) * GMTR_a(ij    ,k0,l,AJ ,hn) &
+                                - 1.0_RP * GMTR_a(ij    ,k0,l,AJ ,tn) * GMTR_a(ij    ,k0,l,AJ ,hn) &
+                                - 1.0_RP * GMTR_a(im1j  ,k0,l,AIJ,tn) * GMTR_a(im1j  ,k0,l,AI ,hn) &
+                                - 2.0_RP * GMTR_a(im1j  ,k0,l,AI ,tn) * GMTR_a(im1j  ,k0,l,AI ,hn) &
+                                + 1.0_RP * GMTR_a(ij    ,k0,l,AJ ,tn) * GMTR_a(im1j  ,k0,l,AI ,hn) )
+
+           ! im1j
+           coef_lap(ij,4,l) = coef_lap(ij,4,l) &
+                            + GMTR_t(im1j  ,k0,l,TI,T_RAREA) &
+                            * ( + 1.0_RP * GMTR_a(im1j  ,k0,l,AIJ,tn) * GMTR_a(ij    ,k0,l,AJ ,hn) &
+                                + 2.0_RP * GMTR_a(ij    ,k0,l,AJ ,tn) * GMTR_a(ij    ,k0,l,AJ ,hn) &
+                                - 1.0_RP * GMTR_a(im1j  ,k0,l,AI ,tn) * GMTR_a(ij    ,k0,l,AJ ,hn) &
+                                - 1.0_RP * GMTR_a(im1j  ,k0,l,AIJ,tn) * GMTR_a(im1j  ,k0,l,AI ,hn) &
+                                - 2.0_RP * GMTR_a(ij    ,k0,l,AJ ,tn) * GMTR_a(im1j  ,k0,l,AI ,hn) &
+                                + 1.0_RP * GMTR_a(im1j  ,k0,l,AI ,tn) * GMTR_a(im1j  ,k0,l,AI ,hn) )
+
+           coef_lap(ij,4,l) = coef_lap(ij,4,l) &
+                            + GMTR_t(im1jm1,k0,l,TJ,T_RAREA) &
+                            * ( - 1.0_RP * GMTR_a(im1jm1,k0,l,AJ ,tn) * GMTR_a(im1j  ,k0,l,AI ,hn) &
+                                - 2.0_RP * GMTR_a(im1jm1,k0,l,AIJ,tn) * GMTR_a(im1j  ,k0,l,AI ,hn) &
+                                - 1.0_RP * GMTR_a(im1j  ,k0,l,AI ,tn) * GMTR_a(im1j  ,k0,l,AI ,hn) &
+                                - 1.0_RP * GMTR_a(im1jm1,k0,l,AJ ,tn) * GMTR_a(im1jm1,k0,l,AIJ,hn) &
+                                - 2.0_RP * GMTR_a(im1jm1,k0,l,AIJ,tn) * GMTR_a(im1jm1,k0,l,AIJ,hn) &
+                                - 1.0_RP * GMTR_a(im1j  ,k0,l,AI ,tn) * GMTR_a(im1jm1,k0,l,AIJ,hn) )
+
+           ! im1jm1
+           coef_lap(ij,5,l) = coef_lap(ij,5,l) &
+                            + GMTR_t(im1jm1,k0,l,TJ,T_RAREA) &
+                            * ( - 1.0_RP * GMTR_a(im1jm1,k0,l,AJ ,tn) * GMTR_a(im1j  ,k0,l,AI ,hn) &
+                                + 2.0_RP * GMTR_a(im1j  ,k0,l,AI ,tn) * GMTR_a(im1j  ,k0,l,AI ,hn) &
+                                + 1.0_RP * GMTR_a(im1jm1,k0,l,AIJ,tn) * GMTR_a(im1j  ,k0,l,AI ,hn) &
+                                - 1.0_RP * GMTR_a(im1jm1,k0,l,AJ ,tn) * GMTR_a(im1jm1,k0,l,AIJ,hn) &
+                                + 2.0_RP * GMTR_a(im1j  ,k0,l,AI ,tn) * GMTR_a(im1jm1,k0,l,AIJ,hn) &
+                                + 1.0_RP * GMTR_a(im1jm1,k0,l,AIJ,tn) * GMTR_a(im1jm1,k0,l,AIJ,hn) )
+
+           ! ijm1
+           coef_lap(ij,6,l) = coef_lap(ij,6,l) &
+                            + GMTR_t(ijm1  ,k0,l,TJ,T_RAREA) &
+                            * ( + 1.0_RP * GMTR_a(ijm1  ,k0,l,AIJ,tn) * GMTR_a(im1jm1,k0,l,AIJ,hn) &
+                                + 2.0_RP * GMTR_a(ij    ,k0,l,AI ,tn) * GMTR_a(im1jm1,k0,l,AIJ,hn) &
+                                - 1.0_RP * GMTR_a(ijm1  ,k0,l,AJ ,tn) * GMTR_a(im1jm1,k0,l,AIJ,hn) &
+                                - 1.0_RP * GMTR_a(ijm1  ,k0,l,AIJ,tn) * GMTR_a(ij    ,k0,l,AI ,hn) &
+                                - 2.0_RP * GMTR_a(ij    ,k0,l,AI ,tn) * GMTR_a(ij    ,k0,l,AI ,hn) &
+                                + 1.0_RP * GMTR_a(ijm1  ,k0,l,AJ ,tn) * GMTR_a(ij    ,k0,l,AI ,hn) )
+        enddo ! loop d
+        !$omp end master
+     endif
+
+     !$omp do
+     do g = 1, gall
+        coef_lap(g,0,l) = coef_lap(g,0,l) * GMTR_p(g,k0,l,P_RAREA) / 12.0_RP
+        coef_lap(g,1,l) = coef_lap(g,1,l) * GMTR_p(g,k0,l,P_RAREA) / 12.0_RP
+        coef_lap(g,2,l) = coef_lap(g,2,l) * GMTR_p(g,k0,l,P_RAREA) / 12.0_RP
+        coef_lap(g,3,l) = coef_lap(g,3,l) * GMTR_p(g,k0,l,P_RAREA) / 12.0_RP
+        coef_lap(g,4,l) = coef_lap(g,4,l) * GMTR_p(g,k0,l,P_RAREA) / 12.0_RP
+        coef_lap(g,5,l) = coef_lap(g,5,l) * GMTR_p(g,k0,l,P_RAREA) / 12.0_RP
+        coef_lap(g,6,l) = coef_lap(g,6,l) * GMTR_p(g,k0,l,P_RAREA) / 12.0_RP
+     enddo
+     !$omp end do
+
+  enddo ! loop l
+  !$omp end parallel
+
+\end{LstF90}
+%
+This section is for the singular point.
+%
+Note that \src{ADM_have_sgp(1)}  is true.
+
+The last section of this subroutine is for the pole region and is as
+follows.
+
+\begin{LstF90}[name=OPRT_lapracian_setup,firstnumber=last]
+  if ( ADM_have_pl ) then
+     n  = ADM_gslf_pl
+
+     do l = 1,ADM_lall_pl
+
+        do d = 1, ADM_nxyz
+           hn  = d + HNX  - 1
+           tn  = d + TNX  - 1
+           tn2 = d + TN2X - 1
+
+           do v = ADM_gmin_pl, ADM_gmax_pl
+              ij   = v
+              ijp1 = v + 1
+              ijm1 = v - 1
+              if( ijp1 == ADM_gmax_pl + 1 ) ijp1 = ADM_gmin_pl
+              if( ijm1 == ADM_gmin_pl - 1 ) ijm1 = ADM_gmax_pl
+
+              coef_lap_pl(0,l) = coef_lap_pl(0,l) &
+                               + GMTR_t_pl(ijm1,k0,l,T_RAREA) &
+                               * ( + 1.0_RP * GMTR_a_pl(ijm1,k0,l,tn ) * GMTR_a_pl(ij,k0,l,hn) &
+                                   - 2.0_RP * GMTR_a_pl(ijm1,k0,l,tn2) * GMTR_a_pl(ij,k0,l,hn) &
+                                   - 1.0_RP * GMTR_a_pl(ij  ,k0,l,tn ) * GMTR_a_pl(ij,k0,l,hn) )
+
+              coef_lap_pl(0,l) = coef_lap_pl(0,l) &
+                               + GMTR_t_pl(ij  ,k0,l,T_RAREA) &
+                               * ( + 1.0_RP * GMTR_a_pl(ij  ,k0,l,tn ) * GMTR_a_pl(ij,k0,l,hn) &
+                                   - 2.0_RP * GMTR_a_pl(ij  ,k0,l,tn2) * GMTR_a_pl(ij,k0,l,hn) &
+                                   - 1.0_RP * GMTR_a_pl(ijp1,k0,l,tn ) * GMTR_a_pl(ij,k0,l,hn) )
+           enddo
+
+           do v = ADM_gmin_pl, ADM_gmax_pl
+              ij   = v
+              ijp1 = v + 1
+              ijm1 = v - 1
+              if( ijp1 == ADM_gmax_pl + 1 ) ijp1 = ADM_gmin_pl
+              if( ijm1 == ADM_gmin_pl - 1 ) ijm1 = ADM_gmax_pl
+
+              coef_lap_pl(v-1,l) = coef_lap_pl(v-1,l) &
+                                 + GMTR_t_pl(ijm1,k0,l,T_RAREA) &
+                                 * ( - 2.0_RP * GMTR_a_pl(ijm1,k0,l,tn ) * GMTR_a_pl(ijm1,k0,l,hn) &
+                                     + 1.0_RP * GMTR_a_pl(ijm1,k0,l,tn2) * GMTR_a_pl(ijm1,k0,l,hn) &
+                                     - 1.0_RP * GMTR_a_pl(ij  ,k0,l,tn ) * GMTR_a_pl(ijm1,k0,l,hn) &
+                                     - 2.0_RP * GMTR_a_pl(ijm1,k0,l,tn ) * GMTR_a_pl(ij  ,k0,l,hn) &
+                                     + 1.0_RP * GMTR_a_pl(ijm1,k0,l,tn2) * GMTR_a_pl(ij  ,k0,l,hn) &
+                                     - 1.0_RP * GMTR_a_pl(ij  ,k0,l,tn ) * GMTR_a_pl(ij  ,k0,l,hn) )
+
+              coef_lap_pl(v-1,l) = coef_lap_pl(v-1,l) &
+                                 + GMTR_t_pl(ij  ,k0,l,T_RAREA) &
+                                 * ( + 1.0_RP * GMTR_a_pl(ij  ,k0,l,tn ) * GMTR_a_pl(ij  ,k0,l,hn) &
+                                     + 1.0_RP * GMTR_a_pl(ij  ,k0,l,tn2) * GMTR_a_pl(ij  ,k0,l,hn) &
+                                     + 2.0_RP * GMTR_a_pl(ijp1,k0,l,tn ) * GMTR_a_pl(ij  ,k0,l,hn) &
+                                     + 1.0_RP * GMTR_a_pl(ij  ,k0,l,tn ) * GMTR_a_pl(ijp1,k0,l,hn) &
+                                     + 1.0_RP * GMTR_a_pl(ij  ,k0,l,tn2) * GMTR_a_pl(ijp1,k0,l,hn) &
+                                     + 2.0_RP * GMTR_a_pl(ijp1,k0,l,tn ) * GMTR_a_pl(ijp1,k0,l,hn) )
+           enddo
+        enddo ! d loop
+
+        do v = ADM_gslf_pl, ADM_gmax_pl
+           coef_lap_pl(v-1,l) = coef_lap_pl(v-1,l) * GMTR_p_pl(n,k0,l,P_RAREA) / 12.0_RP
+        enddo
+
+     enddo ! l loop
+  endif
+
+  return
+end subroutine OPRT_laplacian_setup
+\end{LstF90}
+%
+Note the data layout of coefficient is slightly different between the normal region and the pole region,
+First dimension of \src{coef_lap_pl} corresponds to the second dimention of \src{coef_lap}.
+%
+The range of index \src{v} of the inner-most loop are \src{ADM_gmin_pl} and \src{ADM_gmax_pl},
+which means the five grids surrounding the pole point.
+
+
+\subsubsection{\src{OPRT_diffusion_setup}}
+
+This subroutine is to calculate the coefficients for the diffusion
+operator, subroutine \src{OPRT_diffusion}, which is used in the
+\src{dyn_diffusion} kernel program.
+
+
+Argument lists and local variables definition part of this subroutine is
+as follows.
+
+
+\begin{LstF90}[name=OPRT_diffusion_setup]
+subroutine OPRT_diffusion_setup( &
+     GMTR_p,    GMTR_p_pl,    &
+     GMTR_t,    GMTR_t_pl,    &
+     GMTR_a,    GMTR_a_pl,    &
+     coef_intp, coef_intp_pl, &
+     coef_diff, coef_diff_pl  )
+!ESC!    use mod_adm, only: &
+!ESC!       ADM_have_pl,  &
+!ESC!       ADM_have_sgp, &
+!ESC!       ADM_gall_1d,  &
+!ESC!       ADM_gmin,     &
+!ESC!       ADM_gmax,     &
+!ESC!       ADM_gslf_pl,  &
+!ESC!       ADM_gmin_pl,  &
+!ESC!       ADM_gmax_pl
+!ESC!    use mod_gmtr, only: &
+!ESC!       P_RAREA => GMTR_p_RAREA, &
+!ESC!       T_RAREA => GMTR_t_RAREA, &
+!ESC!       HNX     => GMTR_a_HNX,   &
+!ESC!       TNX     => GMTR_a_TNX,   &
+!ESC!       TN2X    => GMTR_a_TN2X,  &
+!ESC!       GMTR_p_nmax,             &
+!ESC!       GMTR_t_nmax,             &
+!ESC!       GMTR_a_nmax,             &
+!ESC!       GMTR_a_nmax_pl
+  implicit none
+
+  real(RP), intent(in)  :: GMTR_p      (ADM_gall   ,K0,ADM_lall   ,      GMTR_p_nmax   )
+  real(RP), intent(in)  :: GMTR_p_pl   (ADM_gall_pl,K0,ADM_lall_pl,      GMTR_p_nmax   )
+  real(RP), intent(in)  :: GMTR_t      (ADM_gall   ,K0,ADM_lall   ,TI:TJ,GMTR_t_nmax   )
+  real(RP), intent(in)  :: GMTR_t_pl   (ADM_gall_pl,K0,ADM_lall_pl,      GMTR_t_nmax   )
+  real(RP), intent(in)  :: GMTR_a      (ADM_gall   ,K0,ADM_lall   ,AI:AJ,GMTR_a_nmax   )
+  real(RP), intent(in)  :: GMTR_a_pl   (ADM_gall_pl,K0,ADM_lall_pl,      GMTR_a_nmax_pl)
+  real(RP), intent(out) :: coef_intp   (ADM_gall   ,1:3,ADM_nxyz,TI:TJ,ADM_lall   )
+  real(RP), intent(out) :: coef_intp_pl(ADM_gall_pl,1:3,ADM_nxyz,      ADM_lall_pl)
+  real(RP), intent(out) :: coef_diff   (ADM_gall,1:6        ,ADM_nxyz,ADM_lall   )
+  real(RP), intent(out) :: coef_diff_pl(         1:ADM_vlink,ADM_nxyz,ADM_lall_pl)
+
+  integer  :: gmin, gmax, iall, gall, nxyz, lall, gminm1
+
+  integer  :: ij
+  integer  :: ip1j, ijp1
+  integer  :: im1j, ijm1, im1jm1
+
+  integer  :: g, l, d, n, v, hn, tn, tn2
+  !---------------------------------------------------------------------------
+
+\end{LstF90}
+%
+Input arguments are the same with the previous subroutines, the metrics
+calculated by the subroutines described before in this section.
+%
+But the different from them, output arguments this subroutine calculates
+are two kinds, \src{coef_intp}, \src{coef_diff}, and those for the pole
+region.
+%
+\src{coef_intp} is used to calculate the interpolated value at the
+vertex points of the control cell from the center point of the cell,
+and \src{coef_diff} is used to calculate flux convergence by using the value
+at the mid-point of the edge of the cell.
+%
+These coefficients are used not only for the diffusion operatror, but also the operator of horisontal divergence damping.
+%
+See the source code of subroutine \src{OPRT_diffusion} in 
+\autoref{s:dyn_diffusion}.
+
+
+Main part of this subroutine is consist of three section.
+%
+The first section is as follows.
+
+\begin{LstF90}[name=OPRT_diffusion_setup,firstnumber=last]
+  !if( IO_L ) write(IO_FID_LOG,*) '*** setup coefficient of diffusion operator'
+
+  gmin = (ADM_gmin-1)*ADM_gall_1d + ADM_gmin
+  gmax = (ADM_gmax-1)*ADM_gall_1d + ADM_gmax
+  iall = ADM_gall_1d
+  gall = ADM_gall
+  nxyz = ADM_nxyz
+  lall = ADM_lall
+
+  !$omp parallel workshare
+  coef_intp   (:,:,:,:,:) = 0.0_RP
+  coef_diff   (:,:,:,:)   = 0.0_RP
+  !$omp end parallel workshare
+  coef_intp_pl(:,:,:,  :) = 0.0_RP
+  coef_diff_pl(  :,:,:)   = 0.0_RP
+
+  gminm1 = (ADM_gmin-1-1)*ADM_gall_1d + ADM_gmin-1
+
+  !$omp parallel do default(none),private(g,d,l,tn,ij,ip1j,ijp1), &
+  !$omp shared(gminm1,gmax,iall,gall,nxyz,lall,coef_intp,GMTR_t,GMTR_a), &
+  !$omp collapse(2)
+  do l = 1, lall
+  do d = 1, nxyz
+     tn = d + TNX - 1
+
+     do g = gminm1, gmax
+        ij     = g
+        ip1j   = g + 1
+        ijp1   = g + iall
+
+        coef_intp(ij,1,d,TI,l) = ( + GMTR_a(ij  ,k0,l,AIJ,tn) - GMTR_a(ij  ,k0,l,AI ,tn) ) &
+                               * 0.5_RP * GMTR_t(ij,k0,l,TI,T_RAREA)
+        coef_intp(ij,2,d,TI,l) = ( - GMTR_a(ij  ,k0,l,AI ,tn) - GMTR_a(ip1j,k0,l,AJ ,tn) ) &
+                               * 0.5_RP * GMTR_t(ij,k0,l,TI,T_RAREA)
+        coef_intp(ij,3,d,TI,l) = ( - GMTR_a(ip1j,k0,l,AJ ,tn) + GMTR_a(ij  ,k0,l,AIJ,tn) ) &
+                               * 0.5_RP * GMTR_t(ij,k0,l,TI,T_RAREA)
+
+        coef_intp(ij,1,d,TJ,l) = ( + GMTR_a(ij  ,k0,l,AJ ,tn) - GMTR_a(ij  ,k0,l,AIJ,tn) ) &
+                               * 0.5_RP * GMTR_t(ij,k0,l,TJ,T_RAREA)
+        coef_intp(ij,2,d,TJ,l) = ( - GMTR_a(ij  ,k0,l,AIJ,tn) + GMTR_a(ijp1,k0,l,AI ,tn) ) &
+                               * 0.5_RP * GMTR_t(ij,k0,l,TJ,T_RAREA)
+        coef_intp(ij,3,d,TJ,l) = ( + GMTR_a(ijp1,k0,l,AI ,tn) + GMTR_a(ij  ,k0,l,AJ ,tn) ) &
+                               * 0.5_RP * GMTR_t(ij,k0,l,TJ,T_RAREA)
+     enddo
+  enddo ! loop d
+  enddo ! loop l
+  !$omp end parallel do
+
+\end{LstF90}
+%
+In this section \src{coef_intp} is calculated.
+
+The second section is as follows.
+
+\begin{LstF90}[name=OPRT_diffusion_setup,firstnumber=last]
+  !$omp parallel default(none),private(g,d,l,hn,ij,im1j,ijm1,im1jm1), &
+  !$omp shared(ADM_have_sgp,gmin,gmax,iall,gall,nxyz,lall,coef_diff,GMTR_p,GMTR_a)
+  do l = 1, lall
+  do d = 1, nxyz
+     hn = d + HNX - 1
+
+     !$omp do
+     do g = gmin, gmax
+        ij     = g
+        im1j   = g - 1
+        im1jm1 = g - iall - 1
+        ijm1   = g - iall
+
+        coef_diff(ij,1,d,l) = + GMTR_a(ij    ,k0,l,AIJ,hn) * 0.5_RP * GMTR_p(ij,k0,l,P_RAREA)
+        coef_diff(ij,2,d,l) = + GMTR_a(ij    ,k0,l,AJ ,hn) * 0.5_RP * GMTR_p(ij,k0,l,P_RAREA)
+        coef_diff(ij,3,d,l) = - GMTR_a(im1j  ,k0,l,AI ,hn) * 0.5_RP * GMTR_p(ij,k0,l,P_RAREA)
+        coef_diff(ij,4,d,l) = - GMTR_a(im1jm1,k0,l,AIJ,hn) * 0.5_RP * GMTR_p(ij,k0,l,P_RAREA)
+        coef_diff(ij,5,d,l) = - GMTR_a(ijm1  ,k0,l,AJ ,hn) * 0.5_RP * GMTR_p(ij,k0,l,P_RAREA)
+        coef_diff(ij,6,d,l) = + GMTR_a(ij    ,k0,l,AI ,hn) * 0.5_RP * GMTR_p(ij,k0,l,P_RAREA)
+     enddo
+     !$omp end do
+
+     if ( ADM_have_sgp(l) ) then ! pentagon
+        !$omp master
+        coef_diff(gmin,5,d,l) = 0.0_RP
+        !$omp end master
+     endif
+  enddo ! loop d
+  enddo ! loop l
+  !$omp end parallel
+
+\end{LstF90}
+%
+In this section \src{coef_diff} is calculated.
+
+The last section is as follows.
+
+\begin{LstF90}[name=OPRT_diffusion_setup,firstnumber=last]
+  if ( ADM_have_pl ) then
+     n  = ADM_gslf_pl
+
+     do l = 1, ADM_lall_pl
+
+        do d = 1, ADM_nxyz
+           hn  = d + HNX  - 1
+           tn  = d + TNX  - 1
+           tn2 = d + TN2X - 1
+
+           do v = ADM_gmin_pl, ADM_gmax_pl
+              ij   = v
+              ijp1 = v + 1
+              if( ijp1 == ADM_gmax_pl+1 ) ijp1 = ADM_gmin_pl
+
+              coef_intp_pl(v,1,d,l) = - GMTR_a_pl(ijp1,k0,l,tn ) + GMTR_a_pl(ij  ,k0,l,tn )
+              coef_intp_pl(v,2,d,l) = + GMTR_a_pl(ij  ,k0,l,tn ) + GMTR_a_pl(ij  ,k0,l,tn2)
+              coef_intp_pl(v,3,d,l) = + GMTR_a_pl(ij  ,k0,l,tn2) - GMTR_a_pl(ijp1,k0,l,tn )
+
+              coef_intp_pl(v,:,d,l) = coef_intp_pl(v,:,d,l) * 0.5_RP * GMTR_t_pl(v,k0,l,T_RAREA)
+
+              coef_diff_pl(v-1,d,l) = GMTR_a_pl(v,k0,l,hn) * 0.5_RP * GMTR_p_pl(n,k0,l,P_RAREA)
+           enddo
+        enddo
+
+     enddo ! l loop
+  endif
+
+  return
+end subroutine OPRT_diffusion_setup
+\end{LstF90}
+%
+This section is for the pole region.
+
+\subsection{Input data and result}
+
+Max/min/sum of input/output data of the kernel subroutine are output as
+a log.
+%
+Below is an example of \src{$IAB_SYS=Ubuntu-gnu-ompi} case.
+
+\begin{LstLog}
+ ### Input ###
+ +check[GRD_x           ] max=  6.3712200000000000E+06,min= -2.8628180616668505E+06,sum=  1.6166957233794562E+11
+ +check[GRD_x_pl        ] max=  6.3712200000000000E+06,min= -6.3712200000000000E+06,sum= -3.6880373954772949E-07
+ +check[GRD_xt          ] max=  4.0592444288400000E+13,min= -2.8414384541049926E+06,sum=  6.3080977453379920E+16
+ +check[GRD_xt_pl       ] max=  6.3712200000000000E+06,min= -6.3712200000000000E+06,sum= -2.6449561119079590E-07
+ +check[GRD_s           ] max=  1.5707963267948966E+00,min= -1.2566370614358098E+00,sum=  1.9488544754099312E+04
+ +check[GRD_s_pl        ] max=  3.1415926535897931E+00,min= -2.5132741228746029E+00,sum=  3.1415926535791883E+00
+ +check[check_GMTR_p    ] max=  3.1937623126102595E+09,min= -1.0000000000000000E+00,sum=  5.2568771941077820E+13
+ +check[check_GMTR_p_pl ] max=  2.6945919723204341E+09,min= -1.0000000000000000E+00,sum=  3.0761871438935734E+10
+ +check[check_GMTR_t    ] max=  1.5988904134394393E+09,min=  0.0000000000000000E+00,sum=  5.1787428409617836E+13
+ +check[check_GMTR_t_pl ] max=  1.9722549492980933E+09,min=  0.0000000000000000E+00,sum=  1.9722549502848648E+10
+ +check[check_GMTR_a    ] max=  6.3362880879999531E+04,min= -6.0857794015098916E+04,sum=  7.9258961023823655E+08
+ +check[check_GMTR_a_pl ] max=  5.7873883883004550E+04,min= -5.7872753043726123E+04,sum= -4.3064210331067443E-07
+ +check[check_OPRT_coef_] max=  7.7272073615122900E-06,min= -7.7272073610225610E-06,sum= -3.8056606893040025E-03
+ +check[check_OPRT_coef_] max=  6.2151734035229484E-06,min= -6.2403951822043815E-06,sum=  4.0763460586613204E-21
+ +check[check_OPRT_coef_] max=  8.1249192032094562E-06,min= -7.0395716054136067E-06,sum=  2.3097297195178346E-03
+ +check[check_OPRT_coef_] max=  6.2404355543912712E-06,min= -6.2404355543546362E-06,sum=  2.0117032497291439E-21
+ +check[check_OPRT_coef_] max=  7.7272073615122900E-06,min= -1.2825075745577413E-05,sum=  1.8320196095290668E-15
+ +check[check_OPRT_coef_] max=  6.2151734035229484E-06,min= -6.2403951822043815E-06,sum= -8.3793581340078915E-17
+ +check[check_OPRT_coef_] max=  3.5452458387465835E-10,min= -1.7726229192139183E-09,sum= -2.7069899136104107E-20
+ +check[check_OPRT_coef_] max=  6.4022976413393270E-11,min= -3.2011488205582575E-10,sum= -1.0339757656912846E-25
+ +check[check_OPRT_coef_] max=  3.6115131385825805E-05,min= -3.3754836603619669E-05,sum= -1.5562860020283464E-02
+ +check[check_OPRT_coef_] max=  1.4672104347081161E-05,min= -1.4672104347198630E-05,sum=  6.2882931910771206E-19
+ +check[check_OPRT_coef_] max=  8.2996786251499792E-06,min= -8.2996786252745083E-06,sum= -1.9028303446517686E-03
+ +check[check_OPRT_coef_] max=  8.7267985478094788E-06,min= -8.7267985478605143E-06,sum=  5.4196873734474373E-21
+ ### Output ###
+ +check[GMTR_p          ] max=  3.1937623126102595E+09,min= -1.0000000000000000E+00,sum=  5.2568771941077820E+13
+ +check[GMTR_p_pl       ] max=  2.6945919723204341E+09,min= -1.0000000000000000E+00,sum=  3.0761871438935734E+10
+ +check[GMTR_t          ] max=  1.5988904134394393E+09,min=  0.0000000000000000E+00,sum=  5.1787428409617836E+13
+ +check[GMTR_t_pl       ] max=  1.9722549492980933E+09,min=  0.0000000000000000E+00,sum=  1.9722549502848648E+10
+ +check[GMTR_a          ] max=  6.3362880879999531E+04,min= -6.0857794015098916E+04,sum=  7.9258961023823655E+08
+ +check[GMTR_a_pl       ] max=  5.7873883883004550E+04,min= -5.7872753043726123E+04,sum= -4.3064210331067443E-07
+ +check[OPRT_coef_div   ] max=  7.7272073615122900E-06,min= -7.7272073610225610E-06,sum= -3.8056606893040025E-03
+ +check[OPRT_coef_div_pl] max=  6.2151734035229484E-06,min= -6.2403951822043815E-06,sum=  4.0763460586613204E-21
+ +check[OPRT_coef_rot   ] max=  8.1249192032094562E-06,min= -7.0395716054136067E-06,sum=  2.3097297195178346E-03
+ +check[OPRT_coef_rot_pl] max=  6.2404355543912712E-06,min= -6.2404355543546362E-06,sum=  2.0117032497291439E-21
+ +check[OPRT_coef_grad  ] max=  7.7272073615122900E-06,min= -1.2825075745577413E-05,sum=  1.8320196095290668E-15
+ +check[OPRT_coef_grad_p] max=  6.2151734035229484E-06,min= -6.2403951822043815E-06,sum= -8.3793581340078915E-17
+ +check[OPRT_coef_lap   ] max=  3.5452458387465835E-10,min= -1.7726229192139183E-09,sum= -2.7069899136104107E-20
+ +check[OPRT_coef_lap_pl] max=  6.4022976413393270E-11,min= -3.2011488205582575E-10,sum= -1.0339757656912846E-25
+ +check[OPRT_coef_intp  ] max=  3.6115131385825805E-05,min= -3.3754836603619669E-05,sum= -1.5562860020283464E-02
+ +check[OPRT_coef_intp_p] max=  1.4672104347081161E-05,min= -1.4672104347198630E-05,sum=  6.2882931910771206E-19
+ +check[OPRT_coef_diff  ] max=  8.2996786251499792E-06,min= -8.2996786252745083E-06,sum= -1.9028303446517686E-03
+ +check[OPRT_coef_diff_p] max=  8.7267985478094788E-06,min= -8.7267985478605143E-06,sum=  5.4196873734474373E-21
+ ### Validation : grid-by-grid diff ###
+ +check[check_GMTR_p    ] max=  3.3306690738754696E-16,min= -3.3306690738754696E-16,sum=  8.0781261129099502E-15
+ +check[check_GMTR_p_pl ] max=  0.0000000000000000E+00,min=  0.0000000000000000E+00,sum=  0.0000000000000000E+00
+ +check[check_GMTR_t    ] max=  5.5511151231257827E-17,min= -2.3841857910156250E-07,sum= -2.3841857899054020E-07
+ +check[check_GMTR_t_pl ] max=  0.0000000000000000E+00,min=  0.0000000000000000E+00,sum=  0.0000000000000000E+00
+ +check[check_GMTR_a    ] max=  0.0000000000000000E+00,min=  0.0000000000000000E+00,sum=  0.0000000000000000E+00
+ +check[check_GMTR_a_pl ] max=  0.0000000000000000E+00,min=  0.0000000000000000E+00,sum=  0.0000000000000000E+00
+ +check[check_OPRT_coef_] max=  8.4703294725430034E-22,min= -5.7240898388669515E-22,sum=  2.2830184906463564E-21
+ +check[check_OPRT_coef_] max=  0.0000000000000000E+00,min=  0.0000000000000000E+00,sum=  0.0000000000000000E+00
+ +check[check_OPRT_coef_] max=  5.7271917661640254E-22,min= -8.4703294725430034E-22,sum= -9.7783088161424784E-22
+ +check[check_OPRT_coef_] max=  0.0000000000000000E+00,min=  0.0000000000000000E+00,sum=  0.0000000000000000E+00
+ +check[check_OPRT_coef_] max=  8.4703294725430034E-22,min= -2.2896359355467806E-21,sum=  4.2351647362715017E-22
+ +check[check_OPRT_coef_] max=  0.0000000000000000E+00,min=  0.0000000000000000E+00,sum=  0.0000000000000000E+00
+ +check[check_OPRT_coef_] max=  5.1698788284564230E-26,min=  0.0000000000000000E+00,sum=  7.7548182426846345E-26
+ +check[check_OPRT_coef_] max=  0.0000000000000000E+00,min=  0.0000000000000000E+00,sum=  0.0000000000000000E+00
+ +check[check_OPRT_coef_] max=  1.6940658945086007E-21,min= -3.3881317890172014E-21,sum= -2.9646153153900512E-21
+ +check[check_OPRT_coef_] max=  0.0000000000000000E+00,min=  0.0000000000000000E+00,sum=  0.0000000000000000E+00
+ +check[check_OPRT_coef_] max=  0.0000000000000000E+00,min=  0.0000000000000000E+00,sum=  0.0000000000000000E+00
+ +check[check_OPRT_coef_] max=  0.0000000000000000E+00,min=  0.0000000000000000E+00,sum=  0.0000000000000000E+00
+ *** Finish kernel
+
+
+Check the lines below \src{``Validation : grid-by-grid diff''} line,
+that shows difference between calculated output array and
+pre-calculated reference array.
+These should be zero or enough small to be acceptable.
+
+There are sample output log files in \file{reference/}
+in each kernel program directory, for reference purpose.
+
+
+
+
+\subsection{Sample of perfomance result}
+
+Here's an example of the performance result part of the log output.
+Below is an example executed with the machine environment described in \autoref{s:measuring_env}.
+%
+Note that in this program kernel part is iterated one time.
+
+\begin{LstLog}
+ *** Computational Time Report
+ *** ID=001 : MAIN_dyn_metrics                 T=     0.108 N=      1
+\end{LstLog}
