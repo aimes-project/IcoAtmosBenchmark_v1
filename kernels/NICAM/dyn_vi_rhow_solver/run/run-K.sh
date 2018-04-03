@@ -1,4 +1,4 @@
-#! /bin/bash -x
+#! /bin/bash
 #
 # for K computer
 #
@@ -16,9 +16,9 @@ export XOS_MMM_L_ARENA_FREE=2
 
 HMDIR=`pwd`/../../../..
 
-ln -svf ${HMDIR}/bin/dyn_vi_rhow_solver.exe .
-ln -svf ${HMDIR}/kernels/NICAM/dyn_vi_rhow_solver/data/vgrid40_600m_24km.dat .
-ln -svf ${HMDIR}/kernels/NICAM/dyn_vi_rhow_solver/data/snapshot.dyn_vi_rhow_solver.pe000000 .
+ln -sf ${HMDIR}/bin/dyn_vi_rhow_solver.exe .
+ln -sf ${HMDIR}/kernels/NICAM/dyn_vi_rhow_solver/data/vgrid40_600m_24km.dat .
+ln -sf ${HMDIR}/kernels/NICAM/dyn_vi_rhow_solver/data/snapshot.dyn_vi_rhow_solver.pe000000 .
 
 rm -rf ./prof*
 

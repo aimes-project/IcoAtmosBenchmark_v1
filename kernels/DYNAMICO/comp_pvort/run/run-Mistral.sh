@@ -3,7 +3,6 @@
 # for DKRZ Mistral
 #
 #SBATCH --partition=compute
-#SBATCH --account=ku0598
 #SBATCH --job-name=IABknl
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1

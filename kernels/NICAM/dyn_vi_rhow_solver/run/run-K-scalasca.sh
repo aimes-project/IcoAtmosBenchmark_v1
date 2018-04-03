@@ -1,4 +1,4 @@
-#! /bin/bash -x
+#! /bin/bash
 #
 # for K computer
 #
@@ -20,9 +20,9 @@ metrics="L1_MISS:L1_I_MISS:L1_D_MISS:L2_MISS:TLB_MISS:TLB_I_MISS:TLB_D_MISS:FLOA
 
 HMDIR=`pwd`/../../../..
 
-ln -svf ${HMDIR}/bin/dyn_vi_rhow_solver.exe .
-ln -svf ${HMDIR}/kernels/NICAM/dyn_vi_rhow_solver/data/vgrid40_600m_24km.dat .
-ln -svf ${HMDIR}/kernels/NICAM/dyn_vi_rhow_solver/data/snapshot.dyn_vi_rhow_solver.pe000000 .
+ln -sf ${HMDIR}/bin/dyn_vi_rhow_solver.exe .
+ln -sf ${HMDIR}/kernels/NICAM/dyn_vi_rhow_solver/data/vgrid40_600m_24km.dat .
+ln -sf ${HMDIR}/kernels/NICAM/dyn_vi_rhow_solver/data/snapshot.dyn_vi_rhow_solver.pe000000 .
 
 rm -rf ./epik_trace
 

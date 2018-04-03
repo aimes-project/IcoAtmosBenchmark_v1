@@ -1,4 +1,4 @@
-#! /bin/bash -x
+#! /bin/bash
 #
 # for K computer
 #
@@ -16,8 +16,8 @@ export XOS_MMM_L_ARENA_FREE=2
 
 HMDIR=`pwd`/../../../..
 
-ln -svf ${HMDIR}/bin/dyn_metrics.exe .
-ln -svf ${HMDIR}/kernels/NICAM/dyn_metrics/data/snapshot.dyn_metrics.pe000000 .
+ln -sf ${HMDIR}/bin/dyn_metrics.exe .
+ln -sf ${HMDIR}/kernels/NICAM/dyn_metrics/data/snapshot.dyn_metrics.pe000000 .
 
 rm -rf ./prof*
 

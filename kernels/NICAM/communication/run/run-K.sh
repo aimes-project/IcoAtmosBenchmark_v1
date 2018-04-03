@@ -1,4 +1,4 @@
-#! /bin/bash -x
+#! /bin/bash
 #
 # for K computer
 #
@@ -16,8 +16,8 @@ export XOS_MMM_L_ARENA_FREE=2
 
 HMDIR=`pwd`/../../../..
 
-ln -svf ${HMDIR}/bin/communication.exe .
-ln -svf ${HMDIR}/kernels/NICAM/communication/data/communication.cnf .
+ln -sf ${HMDIR}/bin/communication.exe .
+ln -sf ${HMDIR}/kernels/NICAM/communication/data/communication.cnf .
 
 rm -rf ./prof*
 
