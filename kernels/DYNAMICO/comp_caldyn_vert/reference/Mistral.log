@@ -1,0 +1,47 @@
+ [KERNEL] comp_caldyn_vert
+ *** Start  initialize
+                iim, jjm, llm:    23    25    19
+             ij_begin, ij_end:    48   528
+     ij_begin_ext, ij_end_ext:    24   552
+             ll_begin, ll_end:     1    19
+         ll_beginp1, ll_endm1:     2    18
+        t_right, t_rup, t_lup:     1    23    22
+     t_left, t_ldown, t_rdown:    -1   -23   -22
+        u_right, u_rup, u_lup:     0  1173   575
+     u_left, u_ldown, u_rdown:    -1  1150   553
+           z_rup, z_up, z_lup:   598     0   597
+     z_ldown, z_down, z_rdown:   -23   575   -22
+                       dbg: g:     9.80000000
+ +check[bp              ] max=  1.0000000000000000E+00,min=  0.0000000000000000E+00,sum=  6.9254510678414132E+00
+ *** Finish initialize
+ *** Start kernel
+ ### check point iteration:        1000
+ ### Input ###
+ +check[u               ] max=  4.1278968179782127E-01,min= -4.1278968179782127E-01,sum=  1.6791131703073393E+01
+ +check[theta           ] max=  8.0139914420291746E+02,min=  0.0000000000000000E+00,sum=  3.8582633571973117E+06
+ +check[rhodz           ] max=  1.2306877011993038E+03,min=  0.0000000000000000E+00,sum=  5.3979591836733194E+06
+ +check[convm_prev      ] max=  1.0361970643226587E-03,min= -1.0359249303947807E-04,sum= -1.5233533963107249E-01
+ +check[wflux_prev      ] max=  0.0000000000000000E+00,min=  0.0000000000000000E+00,sum=  0.0000000000000000E+00
+ +check[wwuu_prev       ] max=  0.0000000000000000E+00,min=  0.0000000000000000E+00,sum=  0.0000000000000000E+00
+ +check[du_prev         ] max=  3.4404317002518906E-03,min= -3.0804630348046005E-03,sum=  5.5048589972605033E-01
+ +check[dtheta_rhodz_pre] max=  3.2251351666935379E-01,min= -3.3676276308628725E-02,sum= -5.3720539414185993E+01
+ +check[dps_prev        ] max=  0.0000000000000000E+00,min=  0.0000000000000000E+00,sum=  0.0000000000000000E+00
+ ### Output ###
+ +check[convm           ] max=  6.9593389571287302E-03,min= -7.9269107622801825E-04,sum= -1.5227927267389074E+00
+ +check[wflux           ] max=  4.1171035230973149E-04,min= -3.6145630748324665E-03,sum=  5.8901163077820706E-01
+ +check[wwuu            ] max=  1.7149300599654128E-04,min= -1.8768192515764522E-04,sum= -5.0377733672628993E-04
+ +check[du              ] max=  3.4404317002518906E-03,min= -3.0804630348046005E-03,sum=  5.5048632410110032E-01
+ +check[dtheta_rhodz    ] max=  3.5427038431326496E-01,min= -4.2032604085394595E-02,sum= -5.3720539414186248E+01
+ +check[dps             ] max=  6.8201521779861565E-02,min= -7.7683725470345790E-03,sum= -1.3213658793877174E+00
+ ### final iteration:        1000
+ ### Validation : grid-by-grid diff ###
+ +check[convm           ] max=  0.0000000000000000E+00,min=  0.0000000000000000E+00,sum=  0.0000000000000000E+00
+ +check[wflux           ] max=  4.3368086899420177E-19,min= -4.3368086899420177E-19,sum=  4.8400521397294789E-18
+ +check[wwuu            ] max=  2.7105054312137611E-20,min= -2.7105054312137611E-20,sum= -3.9797529316760645E-20
+ +check[du              ] max=  0.0000000000000000E+00,min=  0.0000000000000000E+00,sum=  0.0000000000000000E+00
+ +check[dtheta_rhodz    ] max=  2.2204460492503131E-16,min= -3.3306690738754696E-16,sum= -5.6756628476900550E-16
+ +check[dps             ] max=  0.0000000000000000E+00,min=  0.0000000000000000E+00,sum=  0.0000000000000000E+00
+ *** Finish kernel
+
+ *** Computational Time Report
+ *** ID=001 : MAIN_comp_caldyn_vert            T=     0.118 N=   1000
