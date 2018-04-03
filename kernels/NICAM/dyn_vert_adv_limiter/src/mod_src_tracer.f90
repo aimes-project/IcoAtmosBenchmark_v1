@@ -107,8 +107,8 @@ contains
        do g = 1, gall
           k = kmin ! peeling
 
-          inflagL = 0.5_RP - sign(0.5_RP, ck(g,k  ,l,1)) ! incoming flux: flag=1
-          inflagU = 0.5_RP - sign(0.5_RP,-ck(g,k+1,l,1)) ! incoming flux: flag=1
+          inflagL = 0.5_RP - sign(0.5_RP,ck(g,k  ,l,1)) ! incoming flux: flag=1
+          inflagU = 0.5_RP + sign(0.5_RP,ck(g,k+1,l,1)) ! incoming flux: flag=1
 
           Qin_minL = min( q(g,k,l), q(g,k-1,l) ) + ( 1.0_RP-inflagL ) * BIG
           Qin_minU = min( q(g,k,l), q(g,k+1,l) ) + ( 1.0_RP-inflagU ) * BIG
@@ -130,11 +130,11 @@ contains
 
           zerosw = 0.5_RP - sign(0.5_RP,abs(Cout)-EPS) ! if Cout = 0, sw = 1
 
-          Qout_min_k = ( q(g,k,l) - CQin_max - qnext_max*(1.0_RP-Cin-Cout+d(g,k,l)) ) &
-                     / ( Cout + zerosw ) * ( 1.0_RP - zerosw )                        &
+          Qout_min_k = ( ( q(g,k,l) - qnext_max ) + qnext_max*(Cin+Cout-d(g,k,l)) - CQin_max ) &
+                     / ( Cout + zerosw ) * ( 1.0_RP - zerosw )                                 &
                      + q(g,k,l) * zerosw
-          Qout_max_k = ( q(g,k,l) - CQin_min - qnext_min*(1.0_RP-Cin-Cout+d(g,k,l)) ) &
-                     / ( Cout + zerosw ) * ( 1.0_RP - zerosw )                        &
+          Qout_max_k = ( ( q(g,k,l) - qnext_min ) + qnext_min*(Cin+Cout-d(g,k,l)) - CQin_min ) &
+                     / ( Cout + zerosw ) * ( 1.0_RP - zerosw )                                 &
                      + q(g,k,l) * zerosw
 
           Qout_min_km1(g) = Qout_min_k
@@ -146,8 +146,8 @@ contains
 !OCL XFILL
           !$omp do
           do g = 1, gall
-             inflagL = 0.5_RP - sign(0.5_RP, ck(g,k  ,l,1)) ! incoming flux: flag=1
-             inflagU = 0.5_RP - sign(0.5_RP,-ck(g,k+1,l,1)) ! incoming flux: flag=1
+             inflagL = 0.5_RP - sign(0.5_RP,ck(g,k  ,l,1)) ! incoming flux: flag=1
+             inflagU = 0.5_RP + sign(0.5_RP,ck(g,k+1,l,1)) ! incoming flux: flag=1
 
              Qin_minL = min( q(g,k,l), q(g,k-1,l) ) + ( 1.0_RP-inflagL ) * BIG
              Qin_minU = min( q(g,k,l), q(g,k+1,l) ) + ( 1.0_RP-inflagU ) * BIG
@@ -169,11 +169,11 @@ contains
 
              zerosw = 0.5_RP - sign(0.5_RP,abs(Cout)-EPS) ! if Cout = 0, sw = 1
 
-             Qout_min_k = ( q(g,k,l) - CQin_max - qnext_max*(1.0_RP-Cin-Cout+d(g,k,l)) ) &
-                        / ( Cout + zerosw ) * ( 1.0_RP - zerosw )                        &
+             Qout_min_k = ( ( q(g,k,l) - qnext_max ) + qnext_max*(Cin+Cout-d(g,k,l)) - CQin_max ) &
+                        / ( Cout + zerosw ) * ( 1.0_RP - zerosw )                                 &
                         + q(g,k,l) * zerosw
-             Qout_max_k = ( q(g,k,l) - CQin_min - qnext_min*(1.0_RP-Cin-Cout+d(g,k,l)) ) &
-                        / ( Cout + zerosw ) * ( 1.0_RP - zerosw )                        &
+             Qout_max_k = ( ( q(g,k,l) - qnext_min ) + qnext_min*(Cin+Cout-d(g,k,l)) - CQin_min ) &
+                        / ( Cout + zerosw ) * ( 1.0_RP - zerosw )                                 &
                         + q(g,k,l) * zerosw
 
              q_h(g,k,l) = (        inflagL ) * max( min( q_h(g,k,l), Qout_max_km1(g) ), Qout_min_km1(g) ) &
@@ -193,8 +193,8 @@ contains
 
           do k = ADM_kmin, ADM_kmax
           do g = 1, ADM_gall_pl
-             inflagL = 0.5_RP - sign(0.5_RP, ck_pl(g,k  ,l,1)) ! incoming flux: flag=1
-             inflagU = 0.5_RP - sign(0.5_RP,-ck_pl(g,k+1,l,1)) ! incoming flux: flag=1
+             inflagL = 0.5_RP - sign(0.5_RP,ck_pl(g,k  ,l,1)) ! incoming flux: flag=1
+             inflagU = 0.5_RP + sign(0.5_RP,ck_pl(g,k+1,l,1)) ! incoming flux: flag=1
 
              Qin_minL = min( q_pl(g,k,l), q_pl(g,k-1,l) ) + ( 1.0_RP-inflagL ) * BIG
              Qin_minU = min( q_pl(g,k,l), q_pl(g,k+1,l) ) + ( 1.0_RP-inflagU ) * BIG
@@ -216,11 +216,11 @@ contains
 
              zerosw = 0.5_RP - sign(0.5_RP,abs(Cout)-EPS) ! if Cout = 0, sw = 1
 
-             Qout_min_pl(g,k) = ( q_pl(g,k,l) - CQin_max - qnext_max*(1.0_RP-Cin-Cout+d_pl(g,k,l)) ) &
-                              / ( Cout + zerosw ) * ( 1.0_RP - zerosw )                              &
+             Qout_min_pl(g,k) = ( ( q_pl(g,k,l) - qnext_max ) + qnext_max*(Cin+Cout-d_pl(g,k,l)) - CQin_max ) &
+                              / ( Cout + zerosw ) * ( 1.0_RP - zerosw )                                       &
                               + q_pl(g,k,l) * zerosw
-             Qout_max_pl(g,k) = ( q_pl(g,k,l) - CQin_min - qnext_min*(1.0_RP-Cin-Cout+d_pl(g,k,l)) ) &
-                              / ( Cout + zerosw ) * ( 1.0_RP - zerosw )                              &
+             Qout_max_pl(g,k) = ( ( q_pl(g,k,l) - qnext_min ) + qnext_min*(Cin+Cout-d_pl(g,k,l)) - CQin_min ) &
+                              / ( Cout + zerosw ) * ( 1.0_RP - zerosw )                                       &
                               + q_pl(g,k,l) * zerosw
           enddo
           enddo
