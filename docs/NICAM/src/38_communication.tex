@@ -381,7 +381,7 @@ whether the south-west edge of the region with \src{rgnid} is linked with the
 north-east edge of neighbouring region.
 %
 Therefore, this \src{IF}-clause sets \src{rellist} as that the halo
-grids of this region are linked with the corresponding inner grids of
+grid points of this region are linked with the corresponding inner grid points of
 the region \src{rgnid_rmt} which is managed by the process
 \src{prc_rmt}.
 
@@ -663,8 +663,8 @@ Variables with the prefix \src{sendbuf} and \src{recvbuf} are temporal
 containers used for MPI communication.
 %
 \src{Send_info_r2r} and \src{Recv_info_r2r} specify
-the number of transferring grids between two precesses, for the sending side and receiving side, respectively.
-\src{Copy_info_r2r} is the number of grids to copy within the same process.
+the number of transferring grid points between two precesses, for the sending side and receiving side, respectively.
+\src{Copy_info_r2r} is the number of grid points to copy within the same process.
 %
 \src{Copy_info_r2r} is one-dimensional and the size is \src{info_vindex}
 that is $3$, and the index takes one of \src{I_size}, \src{I_prc_from} or
