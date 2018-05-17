@@ -3,7 +3,7 @@
 ! Problem size and global parameters
 !
 !-------------------------------------------------------------------------------
-  
+
 !!$   integer, public :: iim = 23
 !!$   integer, public :: jjm = 25
 !!$   integer, public :: llm = 1
@@ -13,7 +13,7 @@
 !!$   integer, public :: ij_end_ext = 552
 !!$   integer, public :: ll_begin = 1
 !!$   integer, public :: ll_end = 1
-  
+
   !! below are read from input data file.
   integer, public :: iim = -huge(1)
   integer, public :: jjm = -huge(1)
@@ -57,7 +57,7 @@
   REAL(rstd),public :: g
 
   INTEGER, public, PARAMETER :: energy=1, enstrophy=2
-!!$  INTEGER, public :: caldyn_conserv = enstrophy
+!!$  INTEGER, public :: caldyn_conserv = energy
   INTEGER, public :: caldyn_conserv
 
 !!$  logical, public :: boussinesq = .true.

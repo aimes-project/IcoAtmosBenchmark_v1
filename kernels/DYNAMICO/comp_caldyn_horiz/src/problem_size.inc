@@ -51,10 +51,10 @@
   REAL(rstd),public :: g
 
   integer, public, parameter :: eta_mass=1, eta_lag=2
-!!$  integer, public :: caldyn_eta = eta_lag
+!!$  integer, public :: caldyn_eta = eta_mass
 
   INTEGER, public, PARAMETER :: energy=1, enstrophy=2
-!!$  INTEGER, public :: caldyn_conserv = enstrophy
+!!$  INTEGER, public :: caldyn_conserv = energy
   INTEGER, public :: caldyn_conserv
 
 !!$  logical, public :: boussinesq = .true.

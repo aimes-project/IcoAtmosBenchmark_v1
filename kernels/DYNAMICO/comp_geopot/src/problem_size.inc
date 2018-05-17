@@ -57,11 +57,11 @@
   REAL(rstd),public :: preff
 
   integer, public, parameter :: eta_mass=1, eta_lag=2
-!!$  integer, public :: caldyn_eta = eta_lag
+!!$  integer, public :: caldyn_eta = eta_mass
   integer, public :: caldyn_eta
 
   logical, public :: boussinesq
-  
+
 
   !! parameters from geometry.f90
   integer, public, parameter :: ne_right=1
@@ -111,4 +111,4 @@
 !!$ f90-directive-comment-re: "!\$omp "
 !!$ end:
 
-   
+
