@@ -1,11 +1,4 @@
 LEGAL NOTICE INFORMATION
 ------------------------
 
-All the files in this distribution are covered under the 2-clause BSD license (see the file LICENSE) except some files mentiond below.
-
-kernels/DYNAMICO/comp_caldyn_horiz/src/caldyn_gcm.f90
-kernels/DYNAMICO/comp_caldyn_vert/src/caldyn_gcm.f90
-kernels/DYNAMICO/comp_geopot/src/caldyn_gcm.f90
-kernels/DYNAMICO/comp_pvort/src/caldyn_gcm.f90
-
-These four files are covered under the CeCILL free software license (see the file kernels/DYNAMICO/LICENSE).
+All the files in this distribution are covered under the 2-clause BSD license.
