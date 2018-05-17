@@ -1,0 +1,11 @@
+:terminal begin
+:switch selection
+:case case 1
+	case 1 section
+:case case 2
+	case 2 section
+:case case 3
+	case 3 section	
+:case default
+	default section
+:terminal end

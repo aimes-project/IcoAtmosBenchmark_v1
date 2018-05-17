@@ -1,0 +1,108 @@
+\section{Overview and common stuff}
+
+\subsection{Kernelize}\label{s:kernelize}
+
+
+Kernel programs in this package are as follows;
+%
+\begin{itemize}
+ \item \src{comp_pvort}
+ \item \src{comp_geopot}
+ \item \src{comp_caldyn_horiz}
+ \item \src{comp_caldyn_vert}
+\end{itemize}
+%
+All kernels are single subroutines in the original\footnotemark
+\DYNAMICO, and extracted and imposed to the wrapper for the kernel program
+%
+Each subroutine has no modification, except using modules and some
+parameter settings.
+
+
+All of input arrays and most of arrays/variables defined in various
+modules in the original model are read from input data file.
+%
+Input data for each subroutine and reference (output) data are dumped
+from the execution of original \DYNAMICO.
+%
+Main routine of each kernel program reads these input and reference
+data, and call the subroutine with them as arguments for 1000 times, in
+current setting, then compare output values with reference data.
+
+
+\footnotetext{
+Note that ``original'' here means ``before kernelize'',
+since some bug fixes have made by AICS.
+Please contact the address shown on the back cover of this manual for details.
+}
+
+
+Kernel programs output several log messages to the standard output, such as:
+\begin{itemize}
+%\setlength{\itemsep}{0pt}
+ \item min/max/sum of input data,
+ \item min/max/sum of output data,
+ \item min/max/sum of difference between output and validation data,
+ \item computational time (elapsed time).
+\end{itemize}
+%
+Elapsed time is measured using \src{omp_get_wtime()}.
+
+There are sample output files for the reference in \src{reference/} directory
+of each kernel program, and also they are shown in``Input data and
+result'' section of each kernel program in this document.
+
+
+\subsection{MPI and OpenMP}
+
+While original \DYNAMICO is parallelized by MPI and OpenMP, all kernel
+programs in this package are meant to be executed as one process with
+no threading.
+
+Different from the \NICAM kernel programss in this package, you don't
+need MPI library to compile/execute \DYNAMICO kernel programs, but you
+need to make OpenMP enable in order to use \src{omp_get_wtime()}.
+
+\subsection{Mesuring environment}\label{s:measuring_env}
+
+In the following sections, the example of performance result part of the
+log output file of each kernel program is shown.
+%
+These were measured on the machine environment shown in
+\autoref{t:machine_env},
+with setting \src{export IAB_SYS=Ubuntu-gnu-ompi} on compilation
+(See \file{QuickStart.md}).
+
+
+\begin{table}[htbp]
+\centering
+\caption{Measuring environment}\label{t:machine_env}
+\small
+\begin{tabularx}{.8\textwidth}{llX}
+\hline
+component & specification & notes \\
+\hline
+ CPU & Xeon E5-2630v4 @2.2GHz (10cores) x2 & HT disabled, TB enabled\\
+ Memory & 256GB &\\
+ Storage & SSD (SATA) &\\
+ OS & Ubuntu 16.04.4 LTS &\\
+ Compiler & GNU 5.4.0 & \\
+\hline
+\end{tabularx}
+\end{table}
+
+
+% \begin{table}
+% \centering
+% \caption{Measuring environment(Compiler, MPI)}\label{t:machine_env_2}
+% \small
+% \begin{tabularx}{.9\textwidth}{XXXX}
+% \hline
+% \src{IAB_SYS} & OS & Compiler & MPI \\
+% \hline
+% Ubuntu-gnu-ompi  & Ubuntu16.04 & GNU 5.4.0  & OpenMPI 1.10.2\\
+% Ubuntu-pgi-ompi  & Ubuntu16.04 & PGI 17.4.0 & OpenMPI 1.10.2\\
+% Ubuntu-intel-ompi& Ubuntu16.04 & Intel 2018 & OpenMPI 3.0.0\\
+% \hline
+% \end{tabularx}
+% \end{table}

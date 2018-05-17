@@ -1,0 +1,41 @@
+:terminal   SUBROUTINE timeloop
+
+......
+:while it=itau0+1,itau0+itaumax
+	......
+	:if (it==itau0+1 .OR. MOD(it,itau_sync)==0)
+		:call send_message(f_ps,req_ps0)
+		:call wait_message(req_ps0)
+		......
+	......
+	:while stage=1,nb_stage
+		:call caldyn@((stage==1) .AND. (MOD(it,itau_out)==0), &@
+            f_phis,f_ps,f_mass,f_theta_rhodz,f_u, f_q, &@
+            f_hflux, f_wflux, f_dps, f_dmass, f_dtheta_rhodz, f_du)
+		:switch (scheme)
+		:case (rk4)
+			:call rk_scheme(stage, coef_rk4)
+		:case (rk25)
+			:call rk_scheme(stage, coef_rk25)
+		:case DEFAULT
+			STOP
+		......
+		:comment update q and rhodz after RK step
+		:call advect_tracer(f_hfluxt,f_wfluxt,f_u, f_q,f_rhodz)
+		......
+	:if (MOD(it,itau_check_conserv)==0)
+		:call check_conserve(f_ps,f_dps,f_u,f_theta_rhodz,f_phis,it)
+	:if (MOD(it,itau_physics)==0)
+		:call physics(it,f_phis, f_ps, f_theta_rhodz, f_u, f_wflux, f_q)
+	......
+......
+:terminal END SUBROUTINE timeloop
+
+
+### local variables:
+### mode: whitespace
+### tab-width : 4
+### comment-start : "#"
+### indent-tabs-mode : t
+### whitespace-action : nil
+### end:

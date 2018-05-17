@@ -1,0 +1,56 @@
+:terminal compute_geopot(ps,rhodz,theta, pk,geopot)
+
+:if (caldyn_eta==eta_mass)
+	:comment Compute exner function and geopotential
+	:while l = 1,llm
+		:while ij=ij_begin_ext,ij_end_ext
+			p_ik = ptop + mass_ak(l) + mass_bk(l)*ps(ij)
+			exner_ik = cpp * (p_ik/preff) ** kappa
+			pk(ij,l) = exner_ik
+			:comment specific volume v = kappa*theta*pi/p = dphi/g/rhodz
+			geopot(ij,l+1) = geopot(ij,l) + (g*kappa)*rhodz(ij,l)*theta(ij,l)*exner_ik/p_ik
+:else
+	:comment We are using a Lagrangian vertical coordinate @
+	 Pressure must be computed first top-down (temporarily stored in pk) @
+	 Then Exner pressure and geopotential are computed bottom-up
+	:comment Notice that the computation below should work also when caldyn_eta=eta_mass
+
+	:if (boussinesq)
+		:comment compute only geopotential :@ pressure pk will be computed in compute_caldyn_horiz @ specific volume 1 = dphi/g/rhodz
+		:while l = 1,llm
+			:while ij=ij_begin_ext,ij_end_ext
+				geopot(ij,l+1) = geopot(ij,l) + g*rhodz(ij,l)
+	:else
+		:comment non-Boussinesq, compute geopotential and Exner pressure
+		:comment uppermost layer
+
+		:while ij=ij_begin_ext,ij_end_ext
+			pk(ij,llm) = ptop + (.5*g)*rhodz(ij,llm)
+
+		:comment other layers
+		:while l = llm-1, 1, -1
+			:while ij=ij_begin_ext,ij_end_ext
+				pk(ij,l) = pk(ij,l+1) + (.5*g)*(rhodz(ij,l)+rhodz(ij,l+1))
+		:comment surface pressure (for diagnostics)
+		:while ij=ij_begin_ext,ij_end_ext
+			ps(ij) = pk(ij,1) + (.5*g)*rhodz(ij,1)
+
+		:comment specific volume v = kappa*theta*pi/p = dphi/g/rhodz
+		:while l = 1,llm
+			:while ij=ij_begin_ext,ij_end_ext
+				p_ik = pk(ij,l)
+				exner_ik = cpp * (p_ik/preff) ** kappa
+				geopot(ij,l+1) = geopot(ij,l) + (g*kappa)*rhodz(ij,l)*theta(ij,l)*exner_ik/p_ik
+				pk(ij,l) = exner_ik
+
+:terminal compute_geopot
+
+
+
+### local variables:
+### mode: whitespace
+### tab-width : 4
+### comment-start : "#"
+### indent-tabs-mode : t
+### whitespace-action : nil
+### end:

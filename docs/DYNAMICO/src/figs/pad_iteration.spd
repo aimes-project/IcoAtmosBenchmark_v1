@@ -1,0 +1,5 @@
+:terminal begin
+:while i=1,10
+	sentence 1
+	sentence 2
+:terminal end
