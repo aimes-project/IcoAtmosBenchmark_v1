@@ -20,7 +20,7 @@
  ### Output ###
  +check[q_h             ] max=  7.3763287914597910E+00,min=  0.0000000000000000E+00,sum=  2.5035712634327800E+06
  +check[q_h_pl          ] max=  7.0217174345184390E+00,min=  0.0000000000000000E+00,sum=  1.8137900365706680E+03
- ### Varidation : grid-by-grid diff ###
+ ### Varidation : point-by-point diff ###
  +check[check_q_h       ] max=  4.4858061620800530E-07,min= -5.2590074517411270E-09,sum=  5.0556157603007250E-07
  +check[check_q_h_pl    ] max=  3.8893332998668480E-12,min= -1.8438583992974600E-12,sum=  5.9231508586776730E-12
  *** Finish kernel

@@ -239,7 +239,7 @@ program dyn_horiz_adv_limiter
      call DEBUG_valuecheck( 'Qout_prev_pl      ', Qout_prev_pl      (:,:,:,:) )
   enddo
 
-  write(ADM_LOG_FID,*) '### Validation : grid-by-grid diff ###'
+  write(ADM_LOG_FID,*) '### Validation : point-by-point diff ###'
   check_q_a         (:,:,:,:) = check_q_a         (:,:,:,:) - q_a         (:,:,:,:)
   check_q_a_pl      (:,:,:)   = check_q_a_pl      (:,:,:)   - q_a_pl      (:,:,:)
   check_Qout_prev   (:,:,:,:) = check_Qout_prev   (:,:,:,:) - Qout_prev   (:,:,:,:)

@@ -172,7 +172,7 @@ program dyn_vert_adv_limiter
      call DEBUG_valuecheck( 'q_h_pl      ', q_h_pl      (:,:,:)   )
   enddo
 
-  write(ADM_LOG_FID,*) '### Validation : grid-by-grid diff ###'
+  write(ADM_LOG_FID,*) '### Validation : point-by-point diff ###'
   check_q_h   (:,:,:) = check_q_h   (:,:,:) - q_h   (:,:,:)
   check_q_h_pl(:,:,:) = check_q_h_pl(:,:,:) - q_h_pl(:,:,:)
   call DEBUG_valuecheck( 'check_q_h   ', check_q_h   (:,:,:)   )

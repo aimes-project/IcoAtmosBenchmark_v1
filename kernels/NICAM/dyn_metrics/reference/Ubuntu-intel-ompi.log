@@ -50,7 +50,7 @@
  +check[OPRT_coef_intp_p] max=  1.4672104347081161E-05,min= -1.4672104347198641E-05,sum=  6.4424796572570050E-19
  +check[OPRT_coef_diff  ] max=  8.2996786251500047E-06,min= -8.2996786252745049E-06,sum= -1.9028303446517979E-03
  +check[OPRT_coef_diff_p] max=  8.7267985478094839E-06,min= -8.7267985478605194E-06,sum=  3.4410713482205951E-22
- ### Validation : grid-by-grid diff ###
+ ### Validation : point-by-point diff ###
  +check[check_GMTR_p    ] max=  1.5735626220703125E-05,min= -1.5258789062500000E-05,sum= -9.8419189453306322E-04
  +check[check_GMTR_p_pl ] max=  7.1525573730468750E-07,min= -1.0339757656912846E-25,sum=  9.5367431640625000E-07
  +check[check_GMTR_t    ] max=  2.8133392333984375E-05,min= -2.9087066650390625E-05,sum= -1.1577606201230162E-03

@@ -24,7 +24,7 @@
  +check[ddivdy_pl       ] max=  4.4686835079822770E-11,min= -4.1286060234480350E-11,sum=  6.8817604250940530E-11
  +check[ddivdz          ] max=  3.4380463226247280E-11,min= -1.3010875841849350E-11,sum= -7.2052908719075980E-11
  +check[ddivdz_pl       ] max=  3.2276474319270210E-13,min= -8.5477300588035040E-14,sum=  3.9437219768394680E-12
- ### Varidation : grid-by-grid diff ###
+ ### Varidation : point-by-point diff ###
  +check[check_ddivdx    ] max=  1.4540284205033690E-26,min= -1.2924697071141060E-26,sum= -5.5312110762897860E-26
  +check[check_ddivdx_pl ] max=  1.2924697071141060E-26,min= -1.2924697071141060E-26,sum= -3.4810854025592810E-26
  +check[check_ddivdy    ] max=  1.2116903504194740E-26,min= -1.2924697071141060E-26,sum= -4.1336547287776830E-26

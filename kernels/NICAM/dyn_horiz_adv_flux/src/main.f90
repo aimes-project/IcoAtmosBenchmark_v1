@@ -264,7 +264,7 @@ program dyn_horiz_adv_flux
      call DEBUG_valuecheck( 'GRD_xc_pl   ', GRD_xc_pl      (:,:,:,:)   )
   enddo
 
-  write(ADM_LOG_FID,*) '### Validation : grid-by-grid diff ###'
+  write(ADM_LOG_FID,*) '### Validation : point-by-point diff ###'
   check_flx_h    (:,:,:,:)   = check_flx_h    (:,:,:,:)   - flx_h    (:,:,:,:)
   check_flx_h_pl (:,:,:)     = check_flx_h_pl (:,:,:)     - flx_h_pl (:,:,:)
   check_GRD_xc   (:,:,:,:,:) = check_GRD_xc   (:,:,:,:,:) - GRD_xc   (:,:,:,:,:)
