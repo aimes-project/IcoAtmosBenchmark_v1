@@ -1,0 +1,39 @@
+ [KERNEL] comp_geopot
+ *** Start  initialize
+                iim, jjm, llm:    23    25    19
+             ij_begin, ij_end:    48   528
+     ij_begin_ext, ij_end_ext:    24   552
+             ll_begin, ll_end:     1    19
+        t_right, t_rup, t_lup:     1    23    22
+     t_left, t_ldown, t_rdown:    -1   -23   -22
+        u_right, u_rup, u_lup:     0  1173   575
+     u_left, u_ldown, u_rdown:    -1  1150   553
+           z_rup, z_up, z_lup:   598     0   597
+     z_ldown, z_down, z_rdown:   -23   575   -22
+                   caldyn_eta:     1
+                   boussinesq:     F
+                            g:     9.80000000
+ +check[mass_ak         ] max=  2.2205608555404415E+04,min=  2.9655441593806341E+02,sum=  1.7315769223740909E+05
+ +check[mass_bk         ] max=  9.8820601234384886E-01,min=  0.0000000000000000E+00,sum=  6.4254510678414123E+00
+ *** Finish initialize
+ *** Start kernel
+ ### check point iteration:        1000
+ ### Input ###
+ +check[ps_prev         ] max=  1.0000000000000000E+05,min=  1.0000000000000000E+05,sum=  5.7500000000000000E+07
+ +check[rhodz           ] max=  1.2306877011993038E+03,min=  0.0000000000000000E+00,sum=  5.3979591836733194E+06
+ +check[theta           ] max=  8.0139914420291746E+02,min=  0.0000000000000000E+00,sum=  3.8582633571973117E+06
+ +check[pk_prev         ] max=  1.0014594722514462E+03,min=  0.0000000000000000E+00,sum=  6.9872296819747351E+06
+ +check[geopot_prev     ] max=  3.8250620498369227E+05,min=  0.0000000000000000E+00,sum=  1.1718001851963627E+09
+ ### Output ###
+ +check[ps              ] max=  1.0000000000000000E+05,min=  1.0000000000000000E+05,sum=  5.7500000000000000E+07
+ +check[pk              ] max=  1.0014594722514462E+03,min=  0.0000000000000000E+00,sum=  6.9872296819747351E+06
+ +check[geopot          ] max=  3.8250620498369227E+05,min=  0.0000000000000000E+00,sum=  1.1718001851963627E+09
+ ### final iteration:        1000
+ ### Validation : point-by-point diff ###
+ +check[ps              ] max=  0.0000000000000000E+00,min=  0.0000000000000000E+00,sum=  0.0000000000000000E+00
+ +check[pk              ] max=  1.1368683772161603E-13,min=  0.0000000000000000E+00,sum=  6.0140337154734880E-11
+ +check[geopot          ] max=  0.0000000000000000E+00,min= -5.8207660913467407E-11,sum= -4.4601620174944401E-09
+ *** Finish kernel
+ 
+ *** Computational Time Report
+ *** ID=001 : MAIN_comp_geopot                 T=     0.224 N=   1000

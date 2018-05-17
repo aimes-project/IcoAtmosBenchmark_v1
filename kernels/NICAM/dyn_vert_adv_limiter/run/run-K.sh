@@ -1,4 +1,4 @@
-#! /bin/bash -x
+#! /bin/bash
 #
 # for K computer
 #
@@ -16,8 +16,8 @@ export XOS_MMM_L_ARENA_FREE=2
 
 HMDIR=`pwd`/../../../..
 
-ln -svf ${HMDIR}/bin/dyn_vert_adv_limiter.exe .
-ln -svf ${HMDIR}/kernels/NICAM/dyn_vert_adv_limiter/data/snapshot.dyn_vert_adv_limiter.pe000000 .
+ln -sf ${HMDIR}/bin/dyn_vert_adv_limiter.exe .
+ln -sf ${HMDIR}/kernels/NICAM/dyn_vert_adv_limiter/data/snapshot.dyn_vert_adv_limiter.pe000000 .
 
 rm -rf ./prof*
 

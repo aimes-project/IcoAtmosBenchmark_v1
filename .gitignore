@@ -38,7 +38,7 @@
 *.dvi
 *.fdb_latexmk
 *.fls
-*.log
+IAB_*.log
 *.synctex.gz
 *.toc
 

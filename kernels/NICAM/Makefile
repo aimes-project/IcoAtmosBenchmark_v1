@@ -22,7 +22,7 @@ KERNELS = \
 runshell = run-$(IAB_SYS).sh
 
 ifeq ($(IAB_SYS),Linux64-gnu-ompi)
-   runshell = run-linux-torque.sh
+   runshell = run-linux.sh
 endif
 
 ifeq ($(IAB_SYS),Linux64-intel-impi)
