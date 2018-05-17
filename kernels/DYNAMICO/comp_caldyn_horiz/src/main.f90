@@ -320,7 +320,7 @@ program comp_caldyn_horiz
   end do
 
   write(ADM_LOG_FID,*) '### final iteration:',iteration-1
-  write(ADM_LOG_FID,*) '### Validation : grid-by-grid diff ###'
+  write(ADM_LOG_FID,*) '### Validation : point-by-point diff ###'
 
   pk           (:,:) = ORG_pk           (:,:) - pk           (:,:) 
   hflux        (:,:) = ORG_hflux        (:,:) - hflux        (:,:) 

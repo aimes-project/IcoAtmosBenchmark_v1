@@ -256,7 +256,7 @@ program comp_pvort
   end do
 
   write(ADM_LOG_FID,*) '### final iteration:',iteration-1
-  write(ADM_LOG_FID,*) '### Validation : grid-by-grid diff ###'
+  write(ADM_LOG_FID,*) '### Validation : point-by-point diff ###'
 
   theta(:,:) = ORG_theta(:,:) - theta(:,:)
   rhodz(:,:) = ORG_rhodz(:,:) - rhodz(:,:)

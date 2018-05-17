@@ -222,7 +222,7 @@ program comp_geopot
   end do
 
   write(ADM_LOG_FID,*) '### final iteration:',iteration-1
-  write(ADM_LOG_FID,*) '### Validation : grid-by-grid diff ###'
+  write(ADM_LOG_FID,*) '### Validation : point-by-point diff ###'
 
   ps     (:)   = ORG_ps     (:)   - ps     (:)
   pk     (:,:) = ORG_pk     (:,:) - pk     (:,:) 

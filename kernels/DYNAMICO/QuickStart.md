@@ -165,7 +165,7 @@ For example, the case of `comp_pvort` kernel are shown below.
      +check[qu              ] max=  1.0626772908333491E-06,min= -8.5290650439776975E-07,sum=  3.9932412024562623E-04
      +check[qv              ] max=  1.0864352277577492E-06,min= -8.9078811385791910E-07,sum=  2.7528879622919179E-04
      ### final iteration:        1000
-     ### Validation : grid-by-grid diff ###
+     ### Validation : point-by-point diff ###
      +check[theta           ] max=  0.0000000000000000E+00,min=  0.0000000000000000E+00,sum=  0.0000000000000000E+00
      +check[rhodz           ] max=  0.0000000000000000E+00,min=  0.0000000000000000E+00,sum=  0.0000000000000000E+00
      +check[qu              ] max=  0.0000000000000000E+00,min=  0.0000000000000000E+00,sum=  0.0000000000000000E+00
@@ -176,7 +176,7 @@ For example, the case of `comp_pvort` kernel are shown below.
      *** ID=001 : MAIN_comp_pvort                  T=     0.232 N=   1000
 
 
-Check the lines below `### Validation : grid-by-grid diff ###` line,
+Check the lines below `### Validation : point-by-point diff ###` line,
 those show difference between calculated output array and pre-calculated reference array.
 These should be zero or enough small to be acceptable.
 

@@ -34,7 +34,7 @@
  +check[dtheta_rhodz    ] max=  3.5427038431326496E-01,min= -4.2032604085394595E-02,sum= -5.3720539414185943E+01
  +check[dps             ] max=  6.8201521779861565E-02,min= -7.7683725470345790E-03,sum= -1.3213658793877197E+00
  ### final iteration:         1000
- ### Validation : grid-by-grid diff ###
+ ### Validation : point-by-point diff ###
  +check[convm           ] max=  0.0000000000000000E+00,min=  0.0000000000000000E+00,sum=  0.0000000000000000E+00
  +check[wflux           ] max=  4.3368086899420177E-19,min= -4.3368086899420177E-19,sum=  4.8400521397294789E-18
  +check[wwuu            ] max=  2.7105054312137611E-20,min= -2.7105054312137611E-20,sum= -3.9797529316760645E-20
