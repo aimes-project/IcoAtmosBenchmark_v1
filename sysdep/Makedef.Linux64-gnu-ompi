@@ -8,7 +8,7 @@
 #FFLAGS is set in Mkinclude. FFLAGS_DEBUG is used if IAB_DEBUG=T
 
 FC      = gfortran
-MPIFC   = mpif90 
+MPIFC   = mpif90
 
 FFLAGS_CORE = -cpp -m64                                                                     \
               -std=f2003 -fall-intrinsics -pedantic-errors -fimplicit-none -fmodule-private \
@@ -63,4 +63,4 @@ INSTALL = cp -u
 AR      = ar
 ARFLAGS = r
 RANLIB  = ranlib
-JOBSUB  = qsub
+JOBSUB  = sh
