@@ -1,0 +1,52 @@
+:terminal subroutine compute_caldyn_vert@(u,theta,rhodz,convm, wflux,wwuu, dps,dtheta_rhodz,du)
+
+
+:comment  cumulate mass flux convergence from top to bottom
+:while  l = llm-1, 1, -1
+	:while ij=ij_omp_begin,ij_omp_end         
+		convm(ij,l) = convm(ij,l) + convm(ij,l+1)
+
+
+:comment  compute dps
+:if (is_omp_first_level)
+	:while ij=ij_begin,ij_end         
+		:comment dps/dt = -int(div flux)dz
+		dps(ij) = convm(ij,1) * g 
+
+:comment  Compute vertical mass flux (l=1,llm+1 done by caldyn_BC)
+:while l=ll_beginp1,ll_end
+	:while ij=ij_begin,ij_end         
+		:comment  w = int(z,ztop,div(flux)dz) + B(eta)dps/dt @ => w>0 for upward transport
+		wflux( ij, l ) = bp(l) * convm( ij, 1 ) - convm( ij, l ) 
+
+:while l=ll_begin,ll_endm1
+	:while ij=ij_begin,ij_end         
+		dtheta_rhodz(ij, l ) @= dtheta_rhodz(ij, l )  -   0.5 * (  wflux(ij,l+1) * (theta(ij,l) + theta(ij,l+1)))
+  
+:while l=ll_beginp1,ll_end
+	:while ij=ij_begin,ij_end         
+		dtheta_rhodz(ij, l ) @= dtheta_rhodz(ij, l )  +   0.5 * ( wflux(ij,l  ) * (theta(ij,l-1) + theta(ij,l) ) )
+
+:comment  Compute vertical transport
+:while l=ll_beginp1,ll_end
+	:while ij=ij_begin,ij_end         
+		wwuu(ij+u_right,l) @= 0.5*( wflux(ij,l) + wflux(ij+t_right,l)) * x(u(ij+u_right,l) - u(ij+u_right,l-1))
+		wwuu(ij+u_lup,l)   @= 0.5* ( wflux(ij,l) + wflux(ij+t_lup,l)) * (u(ij+u_lup,l) - u(ij+u_lup,l-1))
+		wwuu(ij+u_ldown,l) @= 0.5*( wflux(ij,l) + wflux(ij+t_ldown,l)) * (u(ij+u_ldown,l) - u(ij+u_ldown,l-1))
+
+:comment  Add vertical transport to du
+:while l=ll_begin,ll_end
+	:while ij=ij_begin,ij_end         
+		du(ij+u_right, l )   @= du(ij+u_right,l)  - (wwuu(ij+u_right,l+1)+ wwuu(ij+u_right,l)) / (rhodz(ij,l)+rhodz(ij+t_right,l))
+		du(ij+u_lup, l )     @= du(ij+u_lup,l)    - (wwuu(ij+u_lup,l+1)  + wwuu(ij+u_lup,l))   / (rhodz(ij,l)+rhodz(ij+t_lup,l))
+		du(ij+u_ldown, l )   @= du(ij+u_ldown,l)  - (wwuu(ij+u_ldown,l+1)+ wwuu(ij+u_ldown,l)) / (rhodz(ij,l)+rhodz(ij+t_ldown,l))
+
+:terminal end compute_caldyn_vert
+
+### local variables:
+### mode: whitespace
+### tab-width : 4
+### comment-start : "#"
+### indent-tabs-mode : t
+### whitespace-action : nil
+### end:

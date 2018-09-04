@@ -359,7 +359,7 @@ program dyn_vi_rhow_solver
      call DEBUG_valuecheck( 'rhogw_pl      ', rhogw_pl      (:,:,:) )
   enddo
 
-  write(ADM_LOG_FID,*) '### Validation : grid-by-grid diff ###'
+  write(ADM_LOG_FID,*) '### Validation : point-by-point diff ###'
   check_rhogw   (:,:,:) = check_rhogw   (:,:,:) - rhogw   (:,:,:)
   check_rhogw_pl(:,:,:) = check_rhogw_pl(:,:,:) - rhogw_pl(:,:,:)
   call DEBUG_valuecheck( 'check_rhogw   ', check_rhogw   (:,:,:) )

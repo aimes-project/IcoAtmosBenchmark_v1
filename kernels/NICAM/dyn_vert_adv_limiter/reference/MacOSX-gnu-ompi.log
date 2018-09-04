@@ -20,7 +20,7 @@
  ### Output ###
  +check[q_h             ] max=  7.3763287914601054E+00,min=  0.0000000000000000E+00,sum=  2.4996023860691669E+06
  +check[q_h_pl          ] max=  7.0217121722230473E+00,min=  0.0000000000000000E+00,sum=  1.8122948877569047E+03
- ### Validation : grid-by-grid diff ###
+ ### Validation : point-by-point diff ###
  +check[check_q_h       ] max=  0.0000000000000000E+00,min=  0.0000000000000000E+00,sum=  0.0000000000000000E+00
  +check[check_q_h_pl    ] max=  0.0000000000000000E+00,min=  0.0000000000000000E+00,sum=  0.0000000000000000E+00
  *** Finish kernel

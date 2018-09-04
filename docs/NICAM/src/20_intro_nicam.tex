@@ -277,7 +277,7 @@ This arrangement is categorized into the Arakawa-A type grid.
 The control volume is defined as the polygon constructed by connecting
 the gravitational centers of neighboring triangular grid elements.
 %
-The shape of control volume is hexagon, as shown in 
+The shape of control volume is hexagon, as shown in
 \autoref{f:control_volume}, except that it is pentagon at only twelve points
 inherited from the original icosahedron.
 
@@ -349,7 +349,7 @@ The gradient operator to an arbitrary variable $\phi$ is calculated as
   - \frac{\phi_0}{a(P_0)} \sum^{6}_{i=1} b_i \bm{n}_i,\label{e:nabla_phi_P_0}
 \end{equation}
 %
-where $\phi(Q_i)$ is interpolated by the similar way to the 
+where $\phi(Q_i)$ is interpolated by the similar way to the
 \autoref{e:u_Q_i}.
 %
 This scheme given as \autoref{e:nabla_phi_P_0} generates the
@@ -395,13 +395,13 @@ approximated by two-dimensional linear surface.
 Then the amount of a tracer inside this parallelogram is
 %
 \begin{equation}
-\rho_{\bm{R}_i} q_{\bm{R}_i} 
+\rho_{\bm{R}_i} q_{\bm{R}_i}
  = \frac{\int_{S_i} \rho q \ \mathrm{d}S}
-         {S_i}  
+         {S_i}
  = \rho_{\bm{C}_i} q_{\bm{C}_i},
 \end{equation}
 %
-where $S_i$ and 
+where $S_i$ and
 $\bm{C}_i$ denotes the area and the mass centroid of this parallelogram, respectively.
 %
 Similarly, the continuity equation will yield
@@ -430,7 +430,7 @@ See \cite{Miura:2007bs} for more details.
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[scale=.3]{figs/2007mwr2101_1-0.png} 
+\includegraphics[scale=.3]{figs/2007mwr2101_1-0.png}
  \caption{%
 (a) Arrangement and notation of distorted hexagonal cells.%
 (b) Schematic of the area swept by the arc $\bm{Q}'_i \bm{Q}'_{i+1}$ during a time interval.%
@@ -886,7 +886,7 @@ So the number of grid points in a single region (except polar region) $N_p$ is c
  N_p = (2 ^ {\text{gl} - \text{rl}} + 2 )^2, \label{e:N_p}
 \end{equation}
 %
-here $+2$ in parentheses denotes the halo grids.
+here $+2$ in parentheses denotes the halo grid points.
 %
 For example, in case glevel is 5 and rlevel is 1, $N_p$ is 324.
 %

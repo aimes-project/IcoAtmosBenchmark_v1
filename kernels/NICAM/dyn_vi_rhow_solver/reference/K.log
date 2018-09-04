@@ -26,7 +26,7 @@
  ### Output ###
  +check[rhogw           ] max=  6.3321830580406620E-01,min= -5.5759247708875370E-01,sum=  3.9071354372140280E+02
  +check[rhogw_pl        ] max=  9.9023353298473070E-02,min= -7.4852014128754550E-03,sum=  2.1725659627743790E+00
- ### Varidation : grid-by-grid diff ###
+ ### Varidation : point-by-point diff ###
  +check[check_rhogw     ] max=  2.2759572004815710E-15,min= -2.6090241078691180E-15,sum=  2.1262669506890430E-14
  +check[check_rhogw_pl  ] max=  9.0205620750793970E-17,min= -1.3183898417423730E-16,sum= -9.6215139517061940E-16
  *** Finish kernel

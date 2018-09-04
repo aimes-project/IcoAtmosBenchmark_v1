@@ -12,7 +12,7 @@
  ### Output ###
  +check[dscl            ] max=  6.1941315670898286E-08,min= -7.0374144752795210E-08,sum= -2.7407850230957095E-07
  +check[dscl_pl         ] max=  2.2139244811324826E-08,min= -6.0170678327656956E-11,sum=  1.8274579608905828E-07
- ### Validation : grid-by-grid diff ###
+ ### Validation : point-by-point diff ###
  +check[check_dscl      ] max=  6.6174449004242214E-24,min= -6.6174449004242214E-24,sum=  1.8357611042080723E-23
  +check[check_dscl_pl   ] max=  3.3087224502121107E-24,min= -3.3087224502121107E-24,sum= -4.3483527708720195E-24
  *** Finish kernel

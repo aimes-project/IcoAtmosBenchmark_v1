@@ -167,7 +167,7 @@ For example, the case of `dyn_diffusion` kernel are shown below.
      ### Output ###
      +check[dscl            ] max=  6.1941315670898286E-08,min= -7.0374144752795210E-08,sum= -2.7407850230958588E-07
      +check[dscl_pl         ] max=  2.2139244811324830E-08,min= -6.0170678327656930E-11,sum=  1.8274579608905828E-07
-     ### Validation : grid-by-grid diff ###
+     ### Validation : point-by-point diff ###
      +check[check_dscl      ] max=  0.0000000000000000E+00,min=  0.0000000000000000E+00,sum=  0.0000000000000000E+00
      +check[check_dscl_pl   ] max=  0.0000000000000000E+00,min=  0.0000000000000000E+00,sum=  0.0000000000000000E+00
      *** Finish kernel
@@ -177,7 +177,7 @@ For example, the case of `dyn_diffusion` kernel are shown below.
      *** ID=002 : OPRT_diffusion                   T=     0.028 N=      1
 
 
-Check the lines below `### Validation : grid-by-grid diff ###` line,
+Check the lines below `### Validation : point-by-point diff ###` line,
 those show difference between calculated output array and pre-calculated reference array.
 These should be zero or enough small to be acceptable.
 

@@ -436,7 +436,7 @@ program dyn_metrics
      call DEBUG_valuecheck( 'OPRT_coef_diff_pl', OPRT_coef_diff_pl(:,:,:)     )
   enddo
 
-  write(ADM_LOG_FID,*) '### Validation : grid-by-grid diff ###'
+  write(ADM_LOG_FID,*) '### Validation : point-by-point diff ###'
   check_GMTR_p           (:,:,:,:)   = check_GMTR_p           (:,:,:,:)   - GMTR_p           (:,:,:,:)
   check_GMTR_p_pl        (:,:,:,:)   = check_GMTR_p_pl        (:,:,:,:)   - GMTR_p_pl        (:,:,:,:)
   check_GMTR_t           (:,:,:,:,:) = check_GMTR_t           (:,:,:,:,:) - GMTR_t           (:,:,:,:,:)

@@ -537,7 +537,7 @@ Below is an example of \src{$IAB_SYS=Ubuntu-gnu-ompi} case.
  +check[q_a_pl          ] max=  6.5571419615446418E+00,min= -5.6211573453294959E-15,sum=  1.5683664645246540E+03
  +check[Qout_prev       ] max=  2.5201719369799781E+05,min= -7.0121044696269173E+05,sum=  4.7462261170534119E+06
  +check[Qout_prev_pl    ] max=  3.4849498839973911E+01,min= -3.6368061161685844E+01,sum=  7.2956220495347202E+02
- ### Validation : grid-by-grid diff ###
+ ### Validation : point-by-point diff ###
  +check[check_q_a       ] max=  0.0000000000000000E+00,min=  0.0000000000000000E+00,sum=  0.0000000000000000E+00
  +check[check_q_a_pl    ] max=  0.0000000000000000E+00,min=  0.0000000000000000E+00,sum=  0.0000000000000000E+00
  +check[check_Qout_prev ] max=  0.0000000000000000E+00,min=  0.0000000000000000E+00,sum=  0.0000000000000000E+00
@@ -545,7 +545,7 @@ Below is an example of \src{$IAB_SYS=Ubuntu-gnu-ompi} case.
  *** Finish kernel
 \end{LstLog}
 
-Check the lines below \src{``Validation : grid-by-grid diff''} line,
+Check the lines below \src{``Validation : point-by-point diff''} line,
 that shows difference between calculated output array and
 pre-calculated reference array.
 These should be zero or enough small to be acceptable.

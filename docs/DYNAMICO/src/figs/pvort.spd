@@ -1,0 +1,78 @@
+:terminal subroutine compute_pvort(ps,u,theta_rhodz, rhodz,theta,qu,qv)
+:if (caldyn_eta==eta_mass)
+	:call wait_message(req_ps)  
+:else
+	:call wait_message(req_mass)
+
+:call wait_message(req_theta_rhodz) 
+
+
+:if (caldyn_eta==eta_mass)
+	:comment Compute mass & theta
+	:while l = ll_begin,ll_end
+		:call test_message(req_u) 
+		:while ij=ij_begin_ext,ij_end_ext
+			m = ( mass_dak(l)+ps(ij)*mass_dbk(l) )/g
+			rhodz(ij,l) = m
+			:if ( rhodz(ij,l) > 0.0 ) 
+				theta(ij,l) = theta_rhodz(ij,l)/rhodz(ij,l)
+			:else
+				theta(ij,l) = 0.0
+:else
+	:comment  Compute only theta
+	:while l = ll_begin,ll_end
+		:call test_message(req_u) 
+		:while ij=ij_begin_ext,ij_end_ext
+			theta(ij,l) = theta_rhodz(ij,l)/rhodz(ij,l)
+
+:call wait_message(req_u)   
+
+:comment  Compute shallow-water potential vorticity
+:while l = ll_begin,ll_end
+	:while ij=ij_begin_ext,ij_end_ext
+		etav &@= 1./Av(ij+z_up)  &@
+			*( ne_rup * u(ij+u_rup,l) * de(ij+u_rup) &@
+			+ ne_left * u(ij+t_rup+u_left,l) * de(ij+t_rup+u_left) &@
+			- ne_lup * u(ij+u_lup,l) * de(ij+u_lup) )
+
+		hv &@
+			= Riv2(ij,vup) * rhodz(ij,l) &@
+			+ Riv2(ij+t_rup,vldown) * rhodz(ij+t_rup,l) &@
+			+ Riv2(ij+t_lup,vrdown) * rhodz(ij+t_lup,l)
+
+		:if ( hv > 0.0 )
+			qv(ij+z_up,l) = ( etav+fv(ij+z_up) )/hv
+		:else
+			qv(ij+z_up,l) = 0.0
+
+		etav &@
+		= 1./Av(ij+z_down) &@
+		*(  ne_ldown * u(ij+u_ldown,l) * de(ij+u_ldown)          &@
+		+ ne_right * u(ij+t_ldown+u_right,l)  * de(ij+t_ldown+u_right)  &@
+		- ne_rdown * u(ij+u_rdown,l) * de(ij+u_rdown) )
+
+		hv &@
+			= Riv2(ij,vdown) * rhodz(ij,l) &@
+			+ Riv2(ij+t_ldown,vrup) * rhodz(ij+t_ldown,l)  &@
+			+ Riv2(ij+t_rdown,vlup) * rhodz(ij+t_rdown,l)
+
+		:if ( hv > 0.0 )
+			qv(ij+z_down,l) =( etav+fv(ij+z_down) )/hv
+		:else
+			qv(ij+z_down,l) = 0.0
+
+	:while ij=ij_begin,ij_end
+		qu(ij+u_right,l) = 0.5*(qv(ij+z_rdown,l)+qv(ij+z_rup,l))  
+		qu(ij+u_lup,l) = 0.5*(qv(ij+z_up,l)+qv(ij+z_lup,l))  
+		qu(ij+u_ldown,l) = 0.5*(qv(ij+z_ldown,l)+qv(ij+z_down,l))  
+
+:terminal end subroutine compute_pvort
+
+### local variables:
+### mode: whitespace
+### tab-width : 4
+### comment-start : "#"
+### indent-tabs-mode : t
+### whitespace-action : nil
+### end:
+

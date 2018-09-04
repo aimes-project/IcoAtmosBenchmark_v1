@@ -54,7 +54,7 @@ The range of $g$ is one from \src{ADM_gall}, that is the number of
 horizontal grid points including the halo points.
 %
 Note that \src{ADM_gall = ADM_gall_1d*ADM_gall_1d},
-where \src{ADM_gall_1d} is the number of grids in $i$ or $j$ direction.
+where \src{ADM_gall_1d} is the number of grid points in $i$ or $j$ direction.
 %
 \src{ADM_kall} is the actual number of vertical layers, and
 \src{ADM_lall} is the number of regions managed by a single MPI process.
@@ -245,7 +245,7 @@ log output file of each kernel program is shown.
 %
 These were measured on the machine environment shown in
 \autoref{t:machine_env},
-with setting \src{export IAB_SYS=Ubuntu-gnu-ompi} on compilation 
+with setting \src{export IAB_SYS=Ubuntu-gnu-ompi} on compilation
 (See \file{QuickStart.md}).
 
 
@@ -255,7 +255,7 @@ with setting \src{export IAB_SYS=Ubuntu-gnu-ompi} on compilation
 \small
 \begin{tabularx}{.8\textwidth}{llX}
 \hline
-component & specification & notes \\ 
+component & specification & notes \\
 \hline
  CPU & Xeon E5-2630v4 @2.2GHz (10cores) x2 & HT disabled, TB enabled\\
  Memory & 256GB &\\
@@ -264,7 +264,7 @@ component & specification & notes \\
  Compiler & GNU 5.4.0 & \\
  MPI & OpenMPI 1.10.2 & Ubuntu standard \\
 \hline
-\end{tabularx} 
+\end{tabularx}
 \end{table}
 
 

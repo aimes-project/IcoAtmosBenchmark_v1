@@ -163,7 +163,7 @@ program dyn_diffusion
      call DEBUG_valuecheck( 'dscl_pl      ', dscl_pl      (:,:,:) )
   enddo
 
-  write(ADM_LOG_FID,*) '### Validation : grid-by-grid diff ###'
+  write(ADM_LOG_FID,*) '### Validation : point-by-point diff ###'
   check_dscl   (:,:,:) = check_dscl   (:,:,:) - dscl   (:,:,:)
   check_dscl_pl(:,:,:) = check_dscl_pl(:,:,:) - dscl_pl(:,:,:)
   call DEBUG_valuecheck( 'check_dscl   ', check_dscl   (:,:,:) )

@@ -319,7 +319,7 @@ program dyn_divdamp
      call DEBUG_valuecheck( 'ddivdz_pl      ', ddivdz_pl      (:,:,:) )
   enddo
 
-  write(ADM_LOG_FID,*) '### Validation : grid-by-grid diff ###'
+  write(ADM_LOG_FID,*) '### Validation : point-by-point diff ###'
   check_ddivdx   (:,:,:) = check_ddivdx   (:,:,:) - ddivdx   (:,:,:)
   check_ddivdx_pl(:,:,:) = check_ddivdx_pl(:,:,:) - ddivdx_pl(:,:,:)
   check_ddivdy   (:,:,:) = check_ddivdy   (:,:,:) - ddivdy   (:,:,:)

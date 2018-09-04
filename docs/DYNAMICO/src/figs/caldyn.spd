@@ -1,0 +1,66 @@
+:terminal caldyn(@
+write_out,f_phis, f_ps, f_mass, f_theta_rhodz, f_u, f_q, &@
+f_hflux, f_wflux, f_dps, f_dmass, f_dtheta_rhodz, f_du)
+......
+:if (caldyn_eta==eta_mass) THEN
+	:call send_message(f_ps,req_ps) 
+:else
+	:call send_message(f_mass,req_mass) 
+
+:call send_message(f_theta_rhodz,req_theta_rhodz) 
+:call send_message(f_u,req_u)
+
+:switch caldyn_conserv
+:case energy
+	:comment energy-conserving
+	......
+	# :while ind=1,ndomain
+	# 	......
+	# 	:call compute_pvort@(ps,u,theta_rhodz, mass,theta,qu,qv)
+	# :while ind=1,ndomain
+	# 	......
+	# 	:call compute_geopot@(ps,mass,theta, pk,geopot)
+	# 	......
+	# 	:call compute_caldyn_horiz@(u,mass,qu,theta,pk,geopot, hflux,convm,dtheta_rhodz,du)
+	# 	:if caldyn_eta==eta_mass
+	# 		......
+	# 		:call compute_caldyn_vert@(u,theta,mass,convm, wflux,wwuu, dps, dtheta_rhodz, du)
+:case enstrophy
+	:comment enstrophy-conserving
+	:while ind=1,ndomain
+		:if (.NOT. assigned_domain(ind)) CYCLE
+		:call swap_dimensions(ind)
+		:call swap_geometry(ind)
+		ps=f_ps(ind)
+		u=f_u(ind)
+		theta_rhodz=f_theta_rhodz(ind)
+		mass=f_mass(ind)
+		theta = f_theta(ind)
+		qu=f_qu(ind)
+		qv=f_qv(ind)
+		:call compute_pvort(ps,u,theta_rhodz, mass,theta,qu,qv)
+		pk = f_pk(ind)
+		geopot = f_geopot(ind)  
+		:call compute_geopot(ps,mass,theta, pk,geopot)
+		hflux=f_hflux(ind)
+		convm = f_dmass(ind)
+		dtheta_rhodz=f_dtheta_rhodz(ind)
+		du=f_du(ind)
+		:call compute_caldyn_horiz(u,mass,qu,theta,pk,geopot, hflux,convm,dtheta_rhodz,du)
+		:if (caldyn_eta==eta_mass) THEN
+			......
+			# wflux=f_wflux(ind)
+			# wwuu=f_wwuu(ind)
+			# dps=f_dps(ind)
+			:call compute_caldyn_vert(u,theta,mass,convm, wflux,wwuu, dps, dtheta_rhodz, du)
+	......
+:terminal caldyn
+
+
+### local variables:
+### mode: whitespace
+### tab-width : 4
+### comment-start : "#"
+### indent-tabs-mode : t
+### whitespace-action : nil
+### end:

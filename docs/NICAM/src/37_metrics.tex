@@ -1209,7 +1209,7 @@ Note the data layout of coefficient is slightly different between the normal reg
 First dimension of \src{coef_div_pl} corresponds to the second dimention of \src{coef_div}.
 %
 The range of index \src{v} of the inner-most loop are \src{ADM_gmin_pl} and \src{ADM_gmax_pl},
-which means the five grids surrounding the pole point.
+which means the five grid points surrounding the pole point.
 
 \subsubsection{\src{OPRT_rotation_setup}}
 
@@ -1495,7 +1495,7 @@ Note the data layout of coefficient is slightly different between the normal reg
 First dimension of \src{coef_rot_pl} corresponds to the second dimention of \src{coef_rot}.
 %
 The range of index \src{v} of the inner-most loop are \src{ADM_gmin_pl} and \src{ADM_gmax_pl},
-which means the five grids surrounding the pole point.
+which means the five grid points surrounding the pole point.
 
 
 
@@ -1796,7 +1796,7 @@ Note the data layout of coefficient is slightly different between the normal reg
 First dimension of \src{coef_grad_pl} corresponds to the second dimention of \src{coef_grad}.
 %
 The range of index \src{v} of the inner-most loop are \src{ADM_gmin_pl} and \src{ADM_gmax_pl},
-which means the five grids surrounding the pole point.
+which means the five grid points surrounding the pole point.
 
 
 
@@ -2359,7 +2359,7 @@ Note the data layout of coefficient is slightly different between the normal reg
 First dimension of \src{coef_lap_pl} corresponds to the second dimention of \src{coef_lap}.
 %
 The range of index \src{v} of the inner-most loop are \src{ADM_gmin_pl} and \src{ADM_gmax_pl},
-which means the five grids surrounding the pole point.
+which means the five grid points surrounding the pole point.
 
 
 \subsubsection{\src{OPRT_diffusion_setup}}
@@ -2437,7 +2437,7 @@ at the mid-point of the edge of the cell.
 %
 These coefficients are used not only for the diffusion operatror, but also the operator of horisontal divergence damping.
 %
-See the source code of subroutine \src{OPRT_diffusion} in 
+See the source code of subroutine \src{OPRT_diffusion} in
 \autoref{s:dyn_diffusion}.
 
 
@@ -2625,7 +2625,7 @@ Below is an example of \src{$IAB_SYS=Ubuntu-gnu-ompi} case.
  +check[OPRT_coef_intp_p] max=  1.4672104347081161E-05,min= -1.4672104347198630E-05,sum=  6.2882931910771206E-19
  +check[OPRT_coef_diff  ] max=  8.2996786251499792E-06,min= -8.2996786252745083E-06,sum= -1.9028303446517686E-03
  +check[OPRT_coef_diff_p] max=  8.7267985478094788E-06,min= -8.7267985478605143E-06,sum=  5.4196873734474373E-21
- ### Validation : grid-by-grid diff ###
+ ### Validation : point-by-point diff ###
  +check[check_GMTR_p    ] max=  3.3306690738754696E-16,min= -3.3306690738754696E-16,sum=  8.0781261129099502E-15
  +check[check_GMTR_p_pl ] max=  0.0000000000000000E+00,min=  0.0000000000000000E+00,sum=  0.0000000000000000E+00
  +check[check_GMTR_t    ] max=  5.5511151231257827E-17,min= -2.3841857910156250E-07,sum= -2.3841857899054020E-07
@@ -2647,7 +2647,7 @@ Below is an example of \src{$IAB_SYS=Ubuntu-gnu-ompi} case.
  *** Finish kernel
 
 
-Check the lines below \src{``Validation : grid-by-grid diff''} line,
+Check the lines below \src{``Validation : point-by-point diff''} line,
 that shows difference between calculated output array and
 pre-calculated reference array.
 These should be zero or enough small to be acceptable.

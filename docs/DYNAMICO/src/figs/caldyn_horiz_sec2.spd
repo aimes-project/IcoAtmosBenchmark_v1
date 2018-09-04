@@ -1,0 +1,102 @@
+:terminal section 2
+:comment Compute potential vorticity (Coriolis) contribution to du
+
+:switch caldyn_conserv
+:case energy
+	:comment  energy-conserving TRiSK
+	:call wait_message(req_qu)
+	:while l=ll_begin,ll_end
+		:while ij=ij_begin,ij_end
+			uu = wee(ij+u_right,1,1)*hflux(ij+u_rup,l)*(qu(ij+u_right,l)+qu(ij+u_rup,l))+                             &@
+				wee(ij+u_right,2,1)*hflux(ij+u_lup,l)*(qu(ij+u_right,l)+qu(ij+u_lup,l))+                             &@
+				wee(ij+u_right,3,1)*hflux(ij+u_left,l)*(qu(ij+u_right,l)+qu(ij+u_left,l))+                           &@
+				wee(ij+u_right,4,1)*hflux(ij+u_ldown,l)*(qu(ij+u_right,l)+qu(ij+u_ldown,l))+                         &@
+				wee(ij+u_right,5,1)*hflux(ij+u_rdown,l)*(qu(ij+u_right,l)+qu(ij+u_rdown,l))+                         &@
+				wee(ij+u_right,1,2)*hflux(ij+t_right+u_ldown,l)*(qu(ij+u_right,l)+qu(ij+t_right+u_ldown,l))+         &@
+				wee(ij+u_right,2,2)*hflux(ij+t_right+u_rdown,l)*(qu(ij+u_right,l)+qu(ij+t_right+u_rdown,l))+         &@
+				wee(ij+u_right,3,2)*hflux(ij+t_right+u_right,l)*(qu(ij+u_right,l)+qu(ij+t_right+u_right,l))+         &@
+				wee(ij+u_right,4,2)*hflux(ij+t_right+u_rup,l)*(qu(ij+u_right,l)+qu(ij+t_right+u_rup,l))+             &@
+				wee(ij+u_right,5,2)*hflux(ij+t_right+u_lup,l)*(qu(ij+u_right,l)+qu(ij+t_right+u_lup,l))
+			du(ij+u_right,l) = .5*uu/de(ij+u_right)
+
+			:if ( de(ij+u_lup) > 1.0 )
+				uu = wee(ij+u_lup,1,1)*hflux(ij+u_left,l)*(qu(ij+u_lup,l)+qu(ij+u_left,l)) +                        &@
+					wee(ij+u_lup,2,1)*hflux(ij+u_ldown,l)*(qu(ij+u_lup,l)+qu(ij+u_ldown,l)) +                      &@
+					wee(ij+u_lup,3,1)*hflux(ij+u_rdown,l)*(qu(ij+u_lup,l)+qu(ij+u_rdown,l)) +                      &@
+					wee(ij+u_lup,4,1)*hflux(ij+u_right,l)*(qu(ij+u_lup,l)+qu(ij+u_right,l)) +                      &@
+					wee(ij+u_lup,5,1)*hflux(ij+u_rup,l)*(qu(ij+u_lup,l)+qu(ij+u_rup,l)) +                          &@
+					wee(ij+u_lup,1,2)*hflux(ij+t_lup+u_right,l)*(qu(ij+u_lup,l)+qu(ij+t_lup+u_right,l)) +          &@
+					wee(ij+u_lup,2,2)*hflux(ij+t_lup+u_rup,l)*(qu(ij+u_lup,l)+qu(ij+t_lup+u_rup,l)) +              &@
+					wee(ij+u_lup,3,2)*hflux(ij+t_lup+u_lup,l)*(qu(ij+u_lup,l)+qu(ij+t_lup+u_lup,l)) +              &@
+					wee(ij+u_lup,4,2)*hflux(ij+t_lup+u_left,l)*(qu(ij+u_lup,l)+qu(ij+t_lup+u_left,l)) +            &@
+					wee(ij+u_lup,5,2)*hflux(ij+t_lup+u_ldown,l)*(qu(ij+u_lup,l)+qu(ij+t_lup+u_ldown,l))
+				du(ij+u_lup,l) = .5*uu/de(ij+u_lup)
+
+			:if ( de(ij+u_ldown) > 1.0 )
+				uu = wee(ij+u_ldown,1,1)*hflux(ij+u_rdown,l)*(qu(ij+u_ldown,l)+qu(ij+u_rdown,l)) +                      &@
+					wee(ij+u_ldown,2,1)*hflux(ij+u_right,l)*(qu(ij+u_ldown,l)+qu(ij+u_right,l)) +                      &@
+					wee(ij+u_ldown,3,1)*hflux(ij+u_rup,l)*(qu(ij+u_ldown,l)+qu(ij+u_rup,l)) +                          &@
+					wee(ij+u_ldown,4,1)*hflux(ij+u_lup,l)*(qu(ij+u_ldown,l)+qu(ij+u_lup,l)) +                          &@
+					wee(ij+u_ldown,5,1)*hflux(ij+u_left,l)*(qu(ij+u_ldown,l)+qu(ij+u_left,l)) +                        &@
+					wee(ij+u_ldown,1,2)*hflux(ij+t_ldown+u_lup,l)*(qu(ij+u_ldown,l)+qu(ij+t_ldown+u_lup,l)) +          &@
+					wee(ij+u_ldown,2,2)*hflux(ij+t_ldown+u_left,l)*(qu(ij+u_ldown,l)+qu(ij+t_ldown+u_left,l)) +        &@
+					wee(ij+u_ldown,3,2)*hflux(ij+t_ldown+u_ldown,l)*(qu(ij+u_ldown,l)+qu(ij+t_ldown+u_ldown,l)) +      &@
+					wee(ij+u_ldown,4,2)*hflux(ij+t_ldown+u_rdown,l)*(qu(ij+u_ldown,l)+qu(ij+t_ldown+u_rdown,l)) +      &@
+					wee(ij+u_ldown,5,2)*hflux(ij+t_ldown+u_right,l)*(qu(ij+u_ldown,l)+qu(ij+t_ldown+u_right,l))
+				du(ij+u_ldown,l) = .5*uu/de(ij+u_ldown)
+
+:case enstrophy
+	:comment  enstrophy-conserving TRiSK
+	:while l=ll_begin,ll_end
+		:while ij=ij_begin,ij_end
+
+			uu = wee(ij+u_right,1,1)*hflux(ij+u_rup,l)+                           &@
+				wee(ij+u_right,2,1)*hflux(ij+u_lup,l)+                           &@
+				wee(ij+u_right,3,1)*hflux(ij+u_left,l)+                          &@
+				wee(ij+u_right,4,1)*hflux(ij+u_ldown,l)+                         &@
+				wee(ij+u_right,5,1)*hflux(ij+u_rdown,l)+                         &@
+				wee(ij+u_right,1,2)*hflux(ij+t_right+u_ldown,l)+                 &@
+				wee(ij+u_right,2,2)*hflux(ij+t_right+u_rdown,l)+                 &@
+				wee(ij+u_right,3,2)*hflux(ij+t_right+u_right,l)+                 &@
+				wee(ij+u_right,4,2)*hflux(ij+t_right+u_rup,l)+                   &@
+				wee(ij+u_right,5,2)*hflux(ij+t_right+u_lup,l)
+			du(ij+u_right,l) = qu(ij+u_right,l)*uu/de(ij+u_right)
+
+
+			:if ( de(ij+u_lup) > 1.0 )
+				uu = wee(ij+u_lup,1,1)*hflux(ij+u_left,l)+                        &@
+					wee(ij+u_lup,2,1)*hflux(ij+u_ldown,l)+                       &@
+					wee(ij+u_lup,3,1)*hflux(ij+u_rdown,l)+                       &@
+					wee(ij+u_lup,4,1)*hflux(ij+u_right,l)+                       &@
+					wee(ij+u_lup,5,1)*hflux(ij+u_rup,l)+                         &@
+					wee(ij+u_lup,1,2)*hflux(ij+t_lup+u_right,l)+                 &@
+					wee(ij+u_lup,2,2)*hflux(ij+t_lup+u_rup,l)+                   &@
+					wee(ij+u_lup,3,2)*hflux(ij+t_lup+u_lup,l)+                   &@
+					wee(ij+u_lup,4,2)*hflux(ij+t_lup+u_left,l)+                  &@
+					wee(ij+u_lup,5,2)*hflux(ij+t_lup+u_ldown,l)
+				du(ij+u_lup,l) = qu(ij+u_lup,l)*uu/de(ij+u_lup)
+
+			:if ( de(ij+u_ldown) > 1.0 )
+				uu = wee(ij+u_ldown,1,1)*hflux(ij+u_rdown,l)+                      &@
+					wee(ij+u_ldown,2,1)*hflux(ij+u_right,l)+                      &@
+					wee(ij+u_ldown,3,1)*hflux(ij+u_rup,l)+                        &@
+					wee(ij+u_ldown,4,1)*hflux(ij+u_lup,l)+                        &@
+					wee(ij+u_ldown,5,1)*hflux(ij+u_left,l)+                       &@
+					wee(ij+u_ldown,1,2)*hflux(ij+t_ldown+u_lup,l)+                &@
+					wee(ij+u_ldown,2,2)*hflux(ij+t_ldown+u_left,l)+               &@
+					wee(ij+u_ldown,3,2)*hflux(ij+t_ldown+u_ldown,l)+              &@
+					wee(ij+u_ldown,4,2)*hflux(ij+t_ldown+u_rdown,l)+              &@
+					wee(ij+u_ldown,5,2)*hflux(ij+t_ldown+u_right,l)
+				du(ij+u_ldown,l) = qu(ij+u_ldown,l)*uu/de(ij+u_ldown)
+:case DEFAULT
+	STOP
+
+:terminal cont. to section 3
+
+### local variables:
+### mode: whitespace
+### tab-width : 4
+### comment-start : "#"
+### indent-tabs-mode : t
+### whitespace-action : nil
+### end:
