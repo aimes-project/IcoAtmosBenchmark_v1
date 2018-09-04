@@ -1,0 +1,22 @@
+:terminal START
+
+:call initialize()
+
+:if ( some_condition )
+	:while i=1,10
+		sentence A1
+		sentence A2
+:else
+	:while i=1,10
+		sentence B1
+		sentencd B2
+		
+:while j=1,10
+	:while i=1,10
+		sentence C1
+		:call subC()
+		sentencd C2
+
+:call finalize()
+
+:terminal END

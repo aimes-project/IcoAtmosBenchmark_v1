@@ -1,0 +1,6 @@
+:terminal begin
+:if condition
+	true section
+:else
+	false section
+:terminal end

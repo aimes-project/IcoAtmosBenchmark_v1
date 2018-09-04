@@ -1,0 +1,7 @@
+:terminal START
+
+:call subA
+:call subB
+
+
+:terminal END

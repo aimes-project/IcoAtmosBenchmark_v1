@@ -1,0 +1,88 @@
+%#BIBTEX latexmk
+%#! latexmk IAB_DYNAMICO_kernels
+\documentclass[a4paper,twoside,openright]{report}
+% \title{{\vspace{2cm}{\Large IcoAtmosBenchmark \\ DYNAMICO kernels} }}
+% \author{{\vspace{2cm}{SPPEXA/AIMES Benchmarking team}}}
+\title{{{\Large IcoAtmosBenchmark \\ DYNAMICO kernels} }}
+\author{{{SPPEXA/AIMES Benchmarking team}}}
+\date{\today}
+\RequirePackage[l2tabu, orthodox]{nag}
+
+\usepackage[pdftex]{graphicx}
+\usepackage[pdftex,usenames,dvipsnames]{color}
+\usepackage[pdftex,pdfusetitle]{hyperref}
+\usepackage[stretch=30,shrink=20]{microtype}
+% \usepackage{times}
+% \usepackage{bookman}
+% \usepackage{lmodern}
+ \usepackage{tgtermes}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath}
+% \usepackage{ascmac}
+\usepackage{bm}
+% \usepackage{alltt}
+\usepackage[round]{natbib}
+\usepackage{tabularx}
+\usepackage{color}
+\usepackage{colortbl}
+\usepackage{fancybox}
+\usepackage{url}
+\usepackage{xspace}
+\usepackage{lscape}
+\usepackage{listings}
+\usepackage[section]{placeins}
+\usepackage{flafter}
+\usepackage{siunitx}
+\usepackage{subcaption}
+% \usepackage{pxjahyper}
+\hypersetup{% options for hyperref
+ bookmarksopen=true,
+ bookmarksnumbered=true,
+ bookmarksdepth=subsubsection,
+ colorlinks=true,
+% linkcolor=red,
+ linkcolor=Blue,
+ citecolor=Brown,
+ urlcolor=Red,
+}
+
+
+
+\usepackage[top=30mm,bottom=35mm,left=30mm,right=30mm]{geometry}
+\setcounter{tocdepth}{3}
+\setcounter{secnumdepth}{3}
+\renewcommand{\thesubsubsection}{(\arabic{subsubsection})}
+\renewcommand{\thefootnote}{*\arabic{footnote})}
+
+\input{local_macro}
+
+
+\begin{document}
+\maketitle
+\tableofcontents
+
+\cleardoublepage
+
+\chapter{Brief introduction of DYNAMICO} \label{chap:introdynamico}
+\input{20_intro_dynamico}
+\clearpage
+
+\chapter{Description of each kernel} \label{chap:kerneldynamico}
+\input{30_code}
+\input{31_pvort}
+\input{32_geopot}
+\input{33_caldyn_horiz}
+\input{34_caldyn_vert}
+
+
+\bibliographystyle{plainnat}
+\bibliography{reference}
+
+\appendix
+\input{40_pad}
+
+\cleardoublepage
+
+\input{back_matter}
+
+\end{document}

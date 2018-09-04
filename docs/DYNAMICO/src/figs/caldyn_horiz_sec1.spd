@@ -1,0 +1,47 @@
+:terminal subroutine compute_caldyn_horiz(u,rhodz,qu,theta,pk,geopot, hflux,convm, dtheta_rhodz, du)
+
+:terminal section 1
+
+:while l = ll_begin, ll_end
+	:comment   Compute mass and theta fluxes
+	:if (caldyn_conserv==energy)
+		:call test_message(req_qu)
+
+	:while ij=ij_begin_ext,ij_end_ext
+		hflux(ij+u_right,l)@=0.5*(rhodz(ij,l)+rhodz(ij+t_right,l))*u(ij+u_right,l)*le(ij+u_right)
+		hflux(ij+u_lup,l)  @=0.5*(rhodz(ij,l)+rhodz(ij+t_lup,l))*u(ij+u_lup,l)*le(ij+u_lup)
+		hflux(ij+u_ldown,l)@=0.5*(rhodz(ij,l)+rhodz(ij+t_ldown,l))*u(ij+u_ldown,l)*le(ij+u_ldown)
+
+		Ftheta(ij+u_right,l)@=0.5*(theta(ij,l)+theta(ij+t_right,l))*hflux(ij+u_right,l)
+		Ftheta(ij+u_lup,l)  @=0.5*(theta(ij,l)+theta(ij+t_lup,l))*hflux(ij+u_lup,l)
+		Ftheta(ij+u_ldown,l)@=0.5*(theta(ij,l)+theta(ij+t_ldown,l))*hflux(ij+u_ldown,l)
+
+	:comment compute horizontal divergence of fluxes
+	:while ij=ij_begin,ij_end
+		:comment  convm = -div(mass flux), sign convention as in Ringler et al. 2012, eq. 21
+		convm(ij,l)= -1./Ai(ij)*(ne_right*hflux(ij+u_right,l)   +  &@
+			ne_rup*hflux(ij+u_rup,l)       +  &@
+			ne_lup*hflux(ij+u_lup,l)       +  &@
+			ne_left*hflux(ij+u_left,l)     +  &@
+			ne_ldown*hflux(ij+u_ldown,l)   +  &@
+			ne_rdown*hflux(ij+u_rdown,l))
+
+		:comment  signe ? attention d (rho theta dz)
+		:comment  dtheta_rhodz =  -div(flux.theta)
+		dtheta_rhodz(ij,l)=-1./Ai(ij)*(ne_right*Ftheta(ij+u_right,l)    +  &@
+			ne_rup*Ftheta(ij+u_rup,l)        +  &@
+			ne_lup*Ftheta(ij+u_lup,l)        +  &@
+			ne_left*Ftheta(ij+u_left,l)      +  &@
+			ne_ldown*Ftheta(ij+u_ldown,l)    +  &@
+			ne_rdown*Ftheta(ij+u_rdown,l))
+
+:terminal cont. to section 2
+
+
+### local variables:
+### mode: whitespace
+### tab-width : 4
+### comment-start : "#"
+### indent-tabs-mode : t
+### whitespace-action : nil
+### end:
