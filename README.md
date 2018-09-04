@@ -10,7 +10,7 @@ The kernels are located at the directories
 
 ```
 (/kernels/ICON/*)
-(/kernels/DYNAMICO/*)
+ /kernels/DYNAMICO/*
  /kernels/NICAM/*
 ```
 
