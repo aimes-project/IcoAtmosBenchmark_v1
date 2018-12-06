@@ -1,0 +1,11 @@
+To run the test code the code should be compiled with MPI and NetCDF support.
+The values GVAL, NBRS, and BLKSIZE should be defined to compile the source code, GVAL can be either float or double, NBRS should be 3 to run the application on a triangular icosahedral grid, and BLKSIZE is the value used for blocking.
+
+To run the code remember that it is an MPI application, so use the right way to launch it on the test machine.
+The command line takes some parameters that specify the grid size, time-steps, I/O files.
+
+Within the directory is a shell script 'run' that compiles the code and runs it.
+
+In the folder is also the source code (in tools folder) of a tool to generate initial values for the test application to test I/O. To compile the tool you should define the values GVAL, NBRS, and BLKSIZE.
+After compiling this tool, you can run it to generate the initial values of the field gv_temp. To do this the grid size and the name of the NetCDF file that the tool will generate should be given as parameters.
+You can run the shell script 'CreateInputNetCDF' to generate the input file.
